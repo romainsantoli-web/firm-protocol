@@ -19,10 +19,15 @@ import time
 from typing import Any
 
 from firm.core.agent import Agent, AgentRole
+from firm.core.audit import AuditEngine, AuditReport
 from firm.core.authority import AuthorityEngine, THRESHOLD_PROBATION
 from firm.core.constitution import ConstitutionalAgent
 from firm.core.governance import GovernanceEngine, Proposal, SimulationResult, Vote
+from firm.core.human import HumanOverride
 from firm.core.ledger import ResponsibilityLedger
+from firm.core.memory import MemoryEngine, MemoryEntry
+from firm.core.roles import RoleEngine, RoleAssignment, RoleDefinition
+from firm.core.spawn import SpawnEngine
 from firm.core.types import (
     AgentId,
     AgentStatus,
@@ -69,6 +74,13 @@ class Firm:
         self.ledger = ResponsibilityLedger()
         self.constitution = ConstitutionalAgent(kill_switch_active=False)
         self.governance = GovernanceEngine()
+
+        # S1 engines
+        self.roles = RoleEngine()
+        self.memory = MemoryEngine()
+        self.spawn_engine = SpawnEngine()
+        self.audit = AuditEngine()
+        self.human = HumanOverride(self.constitution, self.ledger)
 
         # Agent registry
         self._agents: dict[str, Agent] = {}
@@ -296,6 +308,204 @@ class Firm:
         eligible = len([a for a in self.get_agents() if self.authority.can_vote(a)])
         return self.governance.finalize(proposal, eligible)
 
+    # ── Role Fluidity (Layer 3) ────────────────────────────────────────
+
+    def define_role(
+        self,
+        name: str,
+        min_authority: float = 0.4,
+        is_critical: bool = False,
+        max_holders: int = 0,
+        permissions: list[str] | None = None,
+        description: str = "",
+    ) -> RoleDefinition:
+        """Define a new role in the organization."""
+        return self.roles.define_role(
+            name=name,
+            min_authority=min_authority,
+            is_critical=is_critical,
+            max_holders=max_holders,
+            permissions=permissions,
+            description=description,
+        )
+
+    def assign_role(
+        self,
+        agent_id: str,
+        role_name: str,
+        assigned_by: str | None = None,
+    ) -> RoleAssignment:
+        """Assign a defined role to an agent (authority-gated)."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        assignment = self.roles.assign(
+            agent, role_name,
+            assigned_by=AgentId(assigned_by) if assigned_by else None,
+        )
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.RESTRUCTURE,
+            description=f"Role '{role_name}' assigned",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return assignment
+
+    def revoke_role(self, agent_id: str, role_name: str, reason: str = "") -> bool:
+        """Revoke a role from an agent."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        result = self.roles.revoke(agent, role_name, reason)
+        if result:
+            self.ledger.append(
+                agent_id=AgentId(agent_id),
+                action=LedgerAction.RESTRUCTURE,
+                description=f"Role '{role_name}' revoked: {reason}",
+                authority_at_time=agent.authority,
+                outcome="success",
+            )
+        return result
+
+    # ── Collective Memory (Layer 4) ──────────────────────────────────────
+
+    def contribute_memory(
+        self,
+        agent_id: str,
+        content: str,
+        tags: list[str],
+        metadata: dict[str, Any] | None = None,
+    ) -> MemoryEntry:
+        """Add knowledge to the collective memory."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        return self.memory.contribute(
+            content=content,
+            tags=tags,
+            contributor_id=agent.id,
+            contributor_authority=agent.authority,
+            metadata=metadata,
+        )
+
+    def recall_memory(
+        self,
+        tags: list[str],
+        top_k: int = 5,
+    ) -> list[MemoryEntry]:
+        """Retrieve highest-weighted memories matching tags."""
+        return self.memory.recall(tags=tags, top_k=top_k)
+
+    def reinforce_memory(self, agent_id: str, memory_id: str) -> MemoryEntry:
+        """Reinforce (agree with) a memory entry."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        return self.memory.reinforce(memory_id, agent.id, agent.authority)
+
+    def challenge_memory(
+        self, agent_id: str, memory_id: str, reason: str = ""
+    ) -> MemoryEntry:
+        """Challenge (disagree with) a memory entry."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        return self.memory.challenge(memory_id, agent.id, agent.authority, reason)
+
+    # ── Spawn/Merge (Layer 7) ────────────────────────────────────────────
+
+    def spawn_agent(
+        self,
+        parent_id: str,
+        name: str,
+        roles: list[str] | None = None,
+    ) -> Agent:
+        """Spawn a child agent from a parent (authority-gated)."""
+        parent = self._agents.get(AgentId(parent_id))
+        if not parent:
+            raise KeyError(f"Agent {parent_id} not found")
+
+        child = self.spawn_engine.spawn(parent, name)
+        self._agents[child.id] = child
+
+        if roles:
+            for role_name in roles:
+                child.grant_role(AgentRole(name=role_name))
+
+        self.ledger.append(
+            agent_id=parent.id,
+            action=LedgerAction.RESTRUCTURE,
+            description=f"Spawned agent '{name}' (id={child.id})",
+            authority_at_time=parent.authority,
+            outcome="success",
+        )
+        return child
+
+    def merge_agents(
+        self,
+        agent_a_id: str,
+        agent_b_id: str,
+        merged_name: str,
+    ) -> Agent:
+        """Merge two agents into one (both terminated, new one created)."""
+        agent_a = self._agents.get(AgentId(agent_a_id))
+        agent_b = self._agents.get(AgentId(agent_b_id))
+        if not agent_a:
+            raise KeyError(f"Agent {agent_a_id} not found")
+        if not agent_b:
+            raise KeyError(f"Agent {agent_b_id} not found")
+
+        merged = self.spawn_engine.merge(agent_a, agent_b, merged_name)
+        self._agents[merged.id] = merged
+
+        self.ledger.append(
+            agent_id=merged.id,
+            action=LedgerAction.RESTRUCTURE,
+            description=f"Merged from '{agent_a.name}' + '{agent_b.name}'",
+            authority_at_time=merged.authority,
+            outcome="success",
+        )
+        return merged
+
+    def split_agent(
+        self,
+        agent_id: str,
+        name_a: str,
+        name_b: str,
+        authority_ratio: float = 0.5,
+    ) -> tuple[Agent, Agent]:
+        """Split an agent into two (parent terminated)."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+
+        child_a, child_b = self.spawn_engine.split(
+            agent, name_a, name_b, authority_ratio=authority_ratio,
+        )
+        self._agents[child_a.id] = child_a
+        self._agents[child_b.id] = child_b
+
+        self.ledger.append(
+            agent_id=agent.id,
+            action=LedgerAction.RESTRUCTURE,
+            description=f"Split into '{name_a}' + '{name_b}'",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return child_a, child_b
+
+    # ── Audit (Layer 10) ─────────────────────────────────────────────────
+
+    def run_audit(self) -> AuditReport:
+        """Run a full organization audit."""
+        return self.audit.full_audit(
+            firm_name=self.name,
+            ledger=self.ledger,
+            agents=self.get_agents(active_only=False),
+            authority_engine=self.authority,
+        )
+
     # ── Health / Status ──────────────────────────────────────────────────
 
     def _check_governance_health(self) -> None:
@@ -330,5 +540,10 @@ class Firm:
                 "total_proposals": len(self.governance.get_all_proposals()),
             },
             "constitution": self.constitution.get_status(),
+            "roles": self.roles.get_stats(),
+            "memory": self.memory.get_stats(),
+            "spawn": self.spawn_engine.get_stats(),
+            "audit": self.audit.get_stats(),
+            "human_overrides": self.human.get_stats(),
             "uptime_seconds": round(time.time() - self.created_at, 1),
         }

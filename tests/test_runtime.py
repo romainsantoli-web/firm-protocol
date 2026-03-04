@@ -196,3 +196,166 @@ class TestAutoBootstrap:
             if a.authority >= 0.6
         ]
         assert len(boosted) >= 1  # At least one agent was boosted
+
+
+# ── S1 Integration Tests ────────────────────────────────────────────────────
+
+
+class TestRoleFluidity:
+    """Test runtime role management (Layer 3)."""
+
+    def test_define_and_assign_role(self):
+        firm = Firm(name="test")
+        firm.define_role("deployer", min_authority=0.4)
+        agent = firm.add_agent("dev", authority=0.6)
+        assignment = firm.assign_role(agent.id, "deployer")
+        assert agent.has_role("deployer")
+
+    def test_assign_role_unknown_agent(self):
+        firm = Firm(name="test")
+        firm.define_role("qa")
+        with pytest.raises(KeyError, match="not found"):
+            firm.assign_role("nobody", "qa")
+
+    def test_revoke_role(self):
+        firm = Firm(name="test")
+        firm.define_role("deployer", min_authority=0.3)
+        agent = firm.add_agent("dev", authority=0.6)
+        firm.assign_role(agent.id, "deployer")
+        assert firm.revoke_role(agent.id, "deployer")
+        assert not agent.has_role("deployer")
+
+    def test_revoke_role_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.revoke_role("nobody", "test")
+
+    def test_revoke_not_held(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("dev")
+        assert not firm.revoke_role(agent.id, "nonexistent")
+
+
+class TestCollectiveMemory:
+    """Test runtime memory management (Layer 4)."""
+
+    def test_contribute_and_recall(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("researcher", authority=0.7)
+        entry = firm.contribute_memory(agent.id, "Python 3.12 is out", ["python", "releases"])
+        results = firm.recall_memory(["python"])
+        assert len(results) >= 1
+        assert results[0].content == "Python 3.12 is out"
+
+    def test_contribute_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.contribute_memory("nobody", "test", ["tag"])
+
+    def test_reinforce_memory(self):
+        firm = Firm(name="test")
+        a1 = firm.add_agent("a1", authority=0.7)
+        a2 = firm.add_agent("a2", authority=0.6)
+        entry = firm.contribute_memory(a1.id, "test fact", ["tag"])
+        reinforced = firm.reinforce_memory(a2.id, entry.id)
+        assert a2.id in reinforced.reinforced_by
+
+    def test_reinforce_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.reinforce_memory("nobody", "mem-id")
+
+    def test_challenge_memory(self):
+        firm = Firm(name="test")
+        a1 = firm.add_agent("a1", authority=0.7)
+        a2 = firm.add_agent("a2", authority=0.6)
+        entry = firm.contribute_memory(a1.id, "claim", ["topic"])
+        challenged = firm.challenge_memory(a2.id, entry.id, reason="disagree")
+        assert a2.id in challenged.challenged_by
+
+    def test_challenge_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.challenge_memory("nobody", "mem-id")
+
+
+class TestSpawnMerge:
+    """Test runtime spawn/merge/split (Layer 7)."""
+
+    def test_spawn_agent(self):
+        firm = Firm(name="test")
+        parent = firm.add_agent("parent", authority=0.8, credits=200.0)
+        child = firm.spawn_agent(parent.id, "child")
+        assert child.name == "child"
+        assert firm.get_agent(child.id) is not None
+        assert parent.credits < 200.0
+
+    def test_spawn_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.spawn_agent("nobody", "child")
+
+    def test_spawn_with_roles(self):
+        firm = Firm(name="test")
+        parent = firm.add_agent("parent", authority=0.8)
+        child = firm.spawn_agent(parent.id, "child", roles=["worker"])
+        assert child.has_role("worker")
+
+    def test_merge_agents(self):
+        firm = Firm(name="test")
+        a = firm.add_agent("alice", authority=0.7, credits=50.0)
+        b = firm.add_agent("bob", authority=0.6, credits=30.0)
+        merged = firm.merge_agents(a.id, b.id, "alice-bob")
+        assert merged.name == "alice-bob"
+        assert firm.get_agent(merged.id) is not None
+        assert a.status == AgentStatus.TERMINATED
+        assert b.status == AgentStatus.TERMINATED
+
+    def test_merge_unknown_agents(self):
+        firm = Firm(name="test")
+        a = firm.add_agent("alice", authority=0.7)
+        with pytest.raises(KeyError, match="not found"):
+            firm.merge_agents(a.id, "nobody", "merged")
+        with pytest.raises(KeyError, match="not found"):
+            firm.merge_agents("nobody", a.id, "merged")
+
+    def test_split_agent(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("original", authority=0.8, credits=100.0)
+        a, b = firm.split_agent(agent.id, "half-a", "half-b")
+        assert a.name == "half-a"
+        assert b.name == "half-b"
+        assert firm.get_agent(a.id) is not None
+        assert firm.get_agent(b.id) is not None
+        assert agent.status == AgentStatus.TERMINATED
+
+    def test_split_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.split_agent("nobody", "a", "b")
+
+
+class TestAudit:
+    """Test runtime audit (Layer 10)."""
+
+    def test_run_audit(self):
+        firm = Firm(name="Test Org")
+        firm.add_agent("dev", authority=0.7)
+        report = firm.run_audit()
+        assert report.firm_name == "Test Org"
+        assert report.chain_valid
+        assert len(report.agent_summaries) >= 1
+
+
+class TestStatusS1:
+    """Test that status includes S1 engine stats."""
+
+    def test_status_includes_s1(self):
+        firm = Firm(name="test")
+        firm.add_agent("dev", authority=0.5)
+        status = firm.status()
+        assert "roles" in status
+        assert "memory" in status
+        assert "spawn" in status
+        assert "audit" in status
+        assert "human_overrides" in status
