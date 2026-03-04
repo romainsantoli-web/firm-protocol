@@ -22,10 +22,25 @@ from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditReport
 from firm.core.authority import AuthorityEngine, THRESHOLD_PROBATION
 from firm.core.constitution import ConstitutionalAgent
+from firm.core.federation import (
+    FederationEngine,
+    FederationMessage,
+    AgentSecondment,
+    PeerFirm,
+    MessageType,
+    MIN_AUTHORITY_TO_FEDERATE,
+    MIN_AUTHORITY_TO_SEND,
+    MIN_AUTHORITY_TO_SECOND,
+)
 from firm.core.governance import GovernanceEngine, Proposal, SimulationResult, Vote
 from firm.core.human import HumanOverride
 from firm.core.ledger import ResponsibilityLedger
 from firm.core.memory import MemoryEngine, MemoryEntry
+from firm.core.reputation import (
+    ReputationBridge,
+    ReputationAttestation,
+    ImportedReputation,
+)
 from firm.core.roles import RoleEngine, RoleAssignment, RoleDefinition
 from firm.core.spawn import SpawnEngine
 from firm.core.types import (
@@ -81,6 +96,10 @@ class Firm:
         self.spawn_engine = SpawnEngine()
         self.audit = AuditEngine()
         self.human = HumanOverride(self.constitution, self.ledger)
+
+        # S2 engines
+        self.federation = FederationEngine(self.id, self.name)
+        self.reputation = ReputationBridge(self.id)
 
         # Agent registry
         self._agents: dict[str, Agent] = {}
@@ -506,6 +525,218 @@ class Firm:
             authority_engine=self.authority,
         )
 
+    # ── Federation (Layer 8) ─────────────────────────────────────────────
+
+    def register_peer(
+        self,
+        agent_id: str,
+        peer_firm_id: str,
+        peer_name: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> PeerFirm:
+        """Register a peer FIRM (authority-gated)."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_FEDERATE:
+            raise PermissionError(
+                f"Authority too low to federate: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_FEDERATE}"
+            )
+
+        peer = self.federation.register_peer(
+            FirmId(peer_firm_id), peer_name, metadata,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.FEDERATION,
+            description=f"Registered peer FIRM '{peer_name}' ({peer_firm_id})",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return peer
+
+    def send_federation_message(
+        self,
+        agent_id: str,
+        to_firm: str,
+        message_type: str,
+        subject: str,
+        body: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> FederationMessage:
+        """Send a message to a peer FIRM (authority-gated)."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_SEND:
+            raise PermissionError(
+                f"Authority too low to send: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_SEND}"
+            )
+
+        msg = self.federation.send_message(
+            to_firm=FirmId(to_firm),
+            sender_agent=AgentId(agent_id),
+            message_type=message_type,
+            subject=subject,
+            body=body,
+            metadata=metadata,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.FEDERATION,
+            description=f"Sent [{message_type}] to '{to_firm}': {subject}",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return msg
+
+    def second_agent(
+        self,
+        authorizer_id: str,
+        agent_id: str,
+        host_firm: str,
+        duration: float | None = None,
+        reason: str = "",
+    ) -> AgentSecondment:
+        """Second (lend) an agent to a peer FIRM (authority-gated)."""
+        authorizer = self._agents.get(AgentId(authorizer_id))
+        if not authorizer:
+            raise KeyError(f"Agent {authorizer_id} not found")
+        if authorizer.authority < MIN_AUTHORITY_TO_SECOND:
+            raise PermissionError(
+                f"Authority too low to second: {authorizer.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_SECOND}"
+            )
+
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        if not agent.is_active:
+            raise ValueError(
+                f"Agent {agent_id} is not active (status: {agent.status.value})"
+            )
+
+        from firm.core.federation import DEFAULT_SECONDMENT_DURATION
+        sec = self.federation.second_agent(
+            agent_id=AgentId(agent_id),
+            agent_name=agent.name,
+            agent_authority=agent.authority,
+            host_firm=FirmId(host_firm),
+            duration=duration or DEFAULT_SECONDMENT_DURATION,
+            reason=reason,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(authorizer_id),
+            action=LedgerAction.AGENT_SECONDMENT,
+            description=(
+                f"Seconded agent '{agent.name}' to '{host_firm}' "
+                f"(effective auth: {sec.effective_authority:.2f})"
+            ),
+            authority_at_time=authorizer.authority,
+            outcome="success",
+        )
+        return sec
+
+    def recall_secondment(self, secondment_id: str) -> AgentSecondment:
+        """Recall a seconded agent."""
+        sec = self.federation.recall_secondment(secondment_id)
+        self.ledger.append(
+            agent_id=AgentId(sec.agent_id),
+            action=LedgerAction.AGENT_SECONDMENT,
+            description=f"Secondment '{secondment_id}' recalled",
+            outcome="success",
+        )
+        return sec
+
+    # ── Reputation Bridge (Layer 9) ──────────────────────────────────────
+
+    def issue_reputation(
+        self,
+        agent_id: str,
+        endorsement: str = "",
+    ) -> ReputationAttestation:
+        """Issue a reputation attestation for a local agent."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+
+        attestation = self.reputation.issue_attestation(
+            agent_id=AgentId(agent_id),
+            agent_name=agent.name,
+            authority=agent.authority,
+            success_rate=agent.success_rate,
+            action_count=agent._action_count,
+            endorsement=endorsement,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.REPUTATION_ATTESTATION,
+            description=f"Reputation attestation issued (auth={agent.authority:.2f})",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return attestation
+
+    def import_reputation(
+        self,
+        agent_id: str,
+        attestation: ReputationAttestation,
+        discount: float | None = None,
+    ) -> ImportedReputation:
+        """
+        Import a foreign reputation attestation for a local agent.
+
+        The source FIRM's trust level determines the discount factor.
+        """
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+
+        # Look up trust with the source FIRM
+        peer = self.federation.get_peer(attestation.source_firm)
+        if not peer:
+            raise KeyError(
+                f"Source FIRM '{attestation.source_firm}' is not a registered peer"
+            )
+
+        imp = self.reputation.import_attestation(
+            attestation=attestation,
+            peer_trust=peer.trust,
+            discount=discount,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.REPUTATION_ATTESTATION,
+            description=(
+                f"Imported reputation from '{attestation.source_firm}': "
+                f"{imp.original_authority:.2f} × {imp.discount_factor:.2f} "
+                f"= {imp.effective_authority:.4f}"
+            ),
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return imp
+
+    def get_agent_reputation(
+        self,
+        agent_id: str,
+    ) -> dict[str, Any]:
+        """Get combined local + imported reputation for an agent."""
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        return self.reputation.get_agent_reputation_summary(
+            agent_id=AgentId(agent_id),
+            local_authority=agent.authority,
+        )
+
     # ── Health / Status ──────────────────────────────────────────────────
 
     def _check_governance_health(self) -> None:
@@ -545,5 +776,7 @@ class Firm:
             "spawn": self.spawn_engine.get_stats(),
             "audit": self.audit.get_stats(),
             "human_overrides": self.human.get_stats(),
+            "federation": self.federation.get_stats(),
+            "reputation": self.reputation.get_stats(),
             "uptime_seconds": round(time.time() - self.created_at, 1),
         }

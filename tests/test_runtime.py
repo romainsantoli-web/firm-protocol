@@ -3,7 +3,8 @@
 import pytest
 
 from firm.runtime import Firm
-from firm.core.types import AgentStatus, ProposalStatus
+from firm.core.reputation import ReputationAttestation
+from firm.core.types import AgentId, AgentStatus, FirmId, ProposalStatus
 
 
 class TestFirmCreation:
@@ -359,3 +360,207 @@ class TestStatusS1:
         assert "spawn" in status
         assert "audit" in status
         assert "human_overrides" in status
+
+
+# ── S2 Integration Tests ────────────────────────────────────────────────────
+
+
+class TestFederation:
+    """Test runtime federation (Layer 8)."""
+
+    def test_register_peer(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        peer = firm.register_peer(ceo.id, "partner-firm", "Partner Corp")
+        assert peer.name == "Partner Corp"
+        assert peer.firm_id == "partner-firm"
+
+    def test_register_peer_low_authority(self):
+        firm = Firm(name="test")
+        dev = firm.add_agent("dev", authority=0.3)
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.register_peer(dev.id, "partner", "Partner")
+
+    def test_register_peer_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.register_peer("nobody", "partner", "Partner")
+
+    def test_register_peer_logged(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        initial_entries = firm.ledger.length
+        firm.register_peer(ceo.id, "partner", "Partner")
+        assert firm.ledger.length == initial_entries + 1
+
+    def test_send_federation_message(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        firm.register_peer(ceo.id, "partner", "Partner")
+        msg = firm.send_federation_message(
+            ceo.id, "partner", "notification", "Hello",
+            body="Welcome",
+        )
+        assert msg.subject == "Hello"
+        assert msg.verify()
+
+    def test_send_message_low_authority(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        firm.register_peer(ceo.id, "partner", "Partner")
+        dev = firm.add_agent("dev", authority=0.3)
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.send_federation_message(dev.id, "partner", "notification", "Hi")
+
+    def test_send_message_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.send_federation_message("nobody", "partner", "notification", "Hi")
+
+    def test_second_agent(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        dev = firm.add_agent("dev", authority=0.6)
+        firm.register_peer(ceo.id, "partner", "Partner")
+        # Boost trust for secondment
+        peer = firm.federation.get_peer("partner")
+        peer.trust = 0.8
+        sec = firm.second_agent(ceo.id, dev.id, "partner", reason="collab")
+        assert sec.agent_id == dev.id
+        assert sec.effective_authority < dev.authority
+
+    def test_second_agent_low_authority(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        dev = firm.add_agent("dev", authority=0.4)
+        firm.register_peer(ceo.id, "partner", "Partner")
+        peer = firm.federation.get_peer("partner")
+        peer.trust = 0.8
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.second_agent(dev.id, ceo.id, "partner")
+
+    def test_second_inactive_agent(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        dev = firm.add_agent("dev", authority=0.6)
+        dev.suspend("test")
+        firm.register_peer(ceo.id, "partner", "Partner")
+        peer = firm.federation.get_peer("partner")
+        peer.trust = 0.8
+        with pytest.raises(ValueError, match="not active"):
+            firm.second_agent(ceo.id, dev.id, "partner")
+
+    def test_second_unknown_authorizer(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.second_agent("nobody", "dev", "partner")
+
+    def test_second_unknown_agent(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        with pytest.raises(KeyError, match="not found"):
+            firm.second_agent(ceo.id, "nobody", "partner")
+
+    def test_recall_secondment(self):
+        firm = Firm(name="test")
+        ceo = firm.add_agent("ceo", authority=0.9)
+        dev = firm.add_agent("dev", authority=0.6)
+        firm.register_peer(ceo.id, "partner", "Partner")
+        peer = firm.federation.get_peer("partner")
+        peer.trust = 0.8
+        sec = firm.second_agent(ceo.id, dev.id, "partner")
+        recalled = firm.recall_secondment(sec.id)
+        assert recalled.status.value == "recalled"
+
+
+class TestReputation:
+    """Test runtime reputation bridge (Layer 9)."""
+
+    def test_issue_reputation(self):
+        firm = Firm(name="test")
+        dev = firm.add_agent("dev", authority=0.7)
+        # Record some actions so success_rate is meaningful
+        firm.record_action(dev.id, success=True, description="task 1")
+        firm.record_action(dev.id, success=True, description="task 2")
+        att = firm.issue_reputation(dev.id, endorsement="Great work")
+        assert att.agent_name == "dev"
+        assert att.authority == dev.authority
+        assert att.verify()
+
+    def test_issue_reputation_unknown_agent(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.issue_reputation("nobody")
+
+    def test_issue_reputation_logged(self):
+        firm = Firm(name="test")
+        dev = firm.add_agent("dev", authority=0.7)
+        initial_entries = firm.ledger.length
+        firm.issue_reputation(dev.id)
+        assert firm.ledger.length == initial_entries + 1
+
+    def test_import_reputation(self):
+        # Setup: firm A issues attestation for agent, firm B imports it
+        firm_a = Firm(name="Firm A")
+        dev = firm_a.add_agent("dev", authority=0.7)
+        firm_a.record_action(dev.id, success=True, description="task")
+        att = firm_a.issue_reputation(dev.id)
+
+        firm_b = Firm(name="Firm B")
+        local_dev = firm_b.add_agent("dev-local", authority=0.4)
+        # Register firm A as peer
+        ceo_b = firm_b.add_agent("ceo-b", authority=0.9)
+        firm_b.register_peer(ceo_b.id, "firm-a", "Firm A")
+        # Boost trust
+        peer = firm_b.federation.get_peer("firm-a")
+        peer.trust = 0.6
+
+        imp = firm_b.import_reputation(local_dev.id, att)
+        assert imp.effective_authority > 0
+        assert imp.effective_authority < att.authority
+
+    def test_import_reputation_unknown_peer(self):
+        firm = Firm(name="test")
+        dev = firm.add_agent("dev", authority=0.5)
+        att = ReputationAttestation(
+            agent_id=AgentId("x"), source_firm=FirmId("unknown"),
+            authority=0.5, success_rate=0.5, action_count=10,
+        )
+        att.seal()
+        with pytest.raises(KeyError, match="not a registered peer"):
+            firm.import_reputation(dev.id, att)
+
+    def test_import_reputation_unknown_agent(self):
+        firm = Firm(name="test")
+        att = ReputationAttestation(
+            agent_id=AgentId("x"), source_firm=FirmId("f"),
+            authority=0.5, success_rate=0.5, action_count=10,
+        )
+        att.seal()
+        with pytest.raises(KeyError, match="not found"):
+            firm.import_reputation("nobody", att)
+
+    def test_get_agent_reputation(self):
+        firm = Firm(name="test")
+        dev = firm.add_agent("dev", authority=0.6)
+        summary = firm.get_agent_reputation(dev.id)
+        assert summary["local_authority"] == 0.6
+        assert summary["imported_authority"] == 0.0
+
+    def test_get_agent_reputation_unknown(self):
+        firm = Firm(name="test")
+        with pytest.raises(KeyError, match="not found"):
+            firm.get_agent_reputation("nobody")
+
+
+class TestStatusS2:
+    """Test that status includes S2 engine stats."""
+
+    def test_status_includes_s2(self):
+        firm = Firm(name="test")
+        firm.add_agent("dev", authority=0.5)
+        status = firm.status()
+        assert "federation" in status
+        assert "reputation" in status
+        assert status["federation"]["peers"]["total"] == 0
+        assert status["reputation"]["issued_attestations"] == 0

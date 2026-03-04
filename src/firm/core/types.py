@@ -72,3 +72,7 @@ class LedgerAction(str, enum.Enum):
     RESTRUCTURE = "restructure"
     VIOLATION = "violation"
     CREDIT_TRANSFER = "credit_transfer"
+    # S2 — Inter-Firm Protocol & Reputation Bridge
+    FEDERATION = "federation"
+    AGENT_SECONDMENT = "agent_secondment"
+    REPUTATION_ATTESTATION = "reputation_attestation"
