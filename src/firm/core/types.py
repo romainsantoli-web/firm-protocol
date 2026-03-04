@@ -76,3 +76,7 @@ class LedgerAction(str, enum.Enum):
     FEDERATION = "federation"
     AGENT_SECONDMENT = "agent_secondment"
     REPUTATION_ATTESTATION = "reputation_attestation"
+    # S3 — Evolution, Market, Meta-Constitutional
+    EVOLUTION = "evolution"
+    MARKET_TRANSACTION = "market_transaction"
+    CONSTITUTIONAL_AMENDMENT = "constitutional_amendment"

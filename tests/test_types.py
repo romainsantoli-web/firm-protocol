@@ -46,13 +46,17 @@ def test_vote_choices():
 
 
 def test_ledger_actions():
-    assert len(LedgerAction) == 11
+    assert len(LedgerAction) == 14
     assert LedgerAction.DECISION.value == "decision"
     assert LedgerAction.VIOLATION.value == "violation"
     # S2 actions
     assert LedgerAction.FEDERATION.value == "federation"
     assert LedgerAction.AGENT_SECONDMENT.value == "agent_secondment"
     assert LedgerAction.REPUTATION_ATTESTATION.value == "reputation_attestation"
+    # S3 actions
+    assert LedgerAction.EVOLUTION.value == "evolution"
+    assert LedgerAction.MARKET_TRANSACTION.value == "market_transaction"
+    assert LedgerAction.CONSTITUTIONAL_AMENDMENT.value == "constitutional_amendment"
 
 
 def test_newtype_identity():

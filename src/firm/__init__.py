@@ -13,12 +13,13 @@ Two invariants, non-negotiable:
 Everything else is negotiable. Including the protocol itself.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditFinding, AuditReport
 from firm.core.authority import AuthorityEngine
 from firm.core.constitution import ConstitutionalAgent, Invariant
+from firm.core.evolution import EvolutionEngine, EvolutionProposal, ParameterChange
 from firm.core.federation import (
     FederationEngine,
     FederationMessage,
@@ -28,7 +29,9 @@ from firm.core.federation import (
 from firm.core.governance import GovernanceEngine, Proposal, Vote
 from firm.core.human import HumanOverride, OverrideEvent
 from firm.core.ledger import ResponsibilityLedger, LedgerEntry
+from firm.core.market import MarketEngine, MarketTask, MarketBid, Settlement
 from firm.core.memory import MemoryEngine, MemoryEntry
+from firm.core.meta import MetaConstitutional, Amendment
 from firm.core.reputation import (
     ReputationBridge,
     ReputationAttestation,
@@ -42,11 +45,14 @@ __all__ = [
     "Agent",
     "AgentRole",
     "AgentSecondment",
+    "Amendment",
     "AuditEngine",
     "AuditFinding",
     "AuditReport",
     "AuthorityEngine",
     "ConstitutionalAgent",
+    "EvolutionEngine",
+    "EvolutionProposal",
     "FederationEngine",
     "FederationMessage",
     "GovernanceEngine",
@@ -54,9 +60,14 @@ __all__ = [
     "ImportedReputation",
     "Invariant",
     "LedgerEntry",
+    "MarketBid",
+    "MarketEngine",
+    "MarketTask",
     "MemoryEngine",
     "MemoryEntry",
+    "MetaConstitutional",
     "OverrideEvent",
+    "ParameterChange",
     "PeerFirm",
     "Proposal",
     "ReputationAttestation",
@@ -65,6 +76,7 @@ __all__ = [
     "RoleAssignment",
     "RoleDefinition",
     "RoleEngine",
+    "Settlement",
     "SpawnEngine",
     "SpawnEvent",
     "Vote",

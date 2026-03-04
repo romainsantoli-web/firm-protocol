@@ -22,6 +22,12 @@ from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditReport
 from firm.core.authority import AuthorityEngine, THRESHOLD_PROBATION
 from firm.core.constitution import ConstitutionalAgent
+from firm.core.evolution import (
+    EvolutionEngine,
+    EvolutionProposal,
+    ParameterChange,
+    MIN_AUTHORITY_TO_EVOLVE,
+)
 from firm.core.federation import (
     FederationEngine,
     FederationMessage,
@@ -35,7 +41,20 @@ from firm.core.federation import (
 from firm.core.governance import GovernanceEngine, Proposal, SimulationResult, Vote
 from firm.core.human import HumanOverride
 from firm.core.ledger import ResponsibilityLedger
+from firm.core.market import (
+    MarketEngine,
+    MarketTask,
+    MarketBid,
+    Settlement,
+    MIN_AUTHORITY_TO_POST,
+    MIN_AUTHORITY_TO_BID,
+)
 from firm.core.memory import MemoryEngine, MemoryEntry
+from firm.core.meta import (
+    MetaConstitutional,
+    Amendment,
+    MIN_AUTHORITY_TO_AMEND,
+)
 from firm.core.reputation import (
     ReputationBridge,
     ReputationAttestation,
@@ -100,6 +119,11 @@ class Firm:
         # S2 engines
         self.federation = FederationEngine(self.id, self.name)
         self.reputation = ReputationBridge(self.id)
+
+        # S3 engines
+        self.evolution = EvolutionEngine()
+        self.market = MarketEngine()
+        self.meta = MetaConstitutional(self.constitution)
 
         # Agent registry
         self._agents: dict[str, Agent] = {}
@@ -737,6 +761,425 @@ class Firm:
             local_authority=agent.authority,
         )
 
+    # ── Evolution Engine ─────────────────────────────────────────────────
+
+    def propose_evolution(
+        self,
+        proposer_id: str,
+        changes: list[dict[str, Any]],
+        rationale: str = "",
+    ) -> EvolutionProposal:
+        """
+        Propose evolving FIRM parameters (authority-gated at 0.85).
+
+        Args:
+            proposer_id: Agent proposing the evolution
+            changes: List of {category, parameter_name, new_value}
+            rationale: Why this evolution is needed
+        """
+        agent = self._agents.get(AgentId(proposer_id))
+        if not agent:
+            raise KeyError(f"Agent {proposer_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_EVOLVE:
+            raise PermissionError(
+                f"Authority too low to propose evolution: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_EVOLVE}"
+            )
+
+        proposal = self.evolution.propose(
+            proposer_id=AgentId(proposer_id),
+            changes=changes,
+            rationale=rationale,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(proposer_id),
+            action=LedgerAction.EVOLUTION,
+            description=f"Evolution proposed: {len(changes)} parameter change(s)",
+            authority_at_time=agent.authority,
+            outcome="proposed",
+        )
+        return proposal
+
+    def vote_evolution(
+        self,
+        proposal_id: str,
+        voter_id: str,
+        approve: bool,
+    ) -> EvolutionProposal:
+        """Cast a weighted vote on an evolution proposal."""
+        voter = self._agents.get(AgentId(voter_id))
+        if not voter:
+            raise KeyError(f"Agent {voter_id} not found")
+
+        proposal = self.evolution.vote(
+            proposal_id=proposal_id,
+            voter_id=AgentId(voter_id),
+            voter_authority=voter.authority,
+            approve=approve,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(voter_id),
+            action=LedgerAction.EVOLUTION,
+            description=(
+                f"Voted {'for' if approve else 'against'} "
+                f"evolution proposal '{proposal_id}'"
+            ),
+            authority_at_time=voter.authority,
+            outcome="success",
+        )
+        return proposal
+
+    def apply_evolution(self, proposal_id: str) -> list[ParameterChange]:
+        """
+        Finalize and apply an evolution proposal.
+
+        Automatically finalizes voting, then applies if approved.
+        """
+        # Finalize voting
+        eligible = [a for a in self.get_agents() if a.authority >= 0.6]
+        total_weight = sum(a.authority for a in eligible)
+        proposal = self.evolution.finalize(proposal_id, total_weight)
+
+        if proposal.status.value != "approved":
+            self.ledger.append(
+                agent_id=AgentId(proposal.proposer_id),
+                action=LedgerAction.EVOLUTION,
+                description=f"Evolution proposal '{proposal_id}' {proposal.status.value}",
+                outcome=proposal.status.value,
+            )
+            return []
+
+        # Apply
+        applied = self.evolution.apply(proposal_id)
+
+        self.ledger.append(
+            agent_id=AgentId(proposal.proposer_id),
+            action=LedgerAction.EVOLUTION,
+            description=(
+                f"Evolution applied — generation {self.evolution.generation}: "
+                + ", ".join(f"{c.parameter_name}: {c.old_value}→{c.new_value}"
+                            for c in applied)
+            ),
+            outcome="applied",
+        )
+        return applied
+
+    def rollback_evolution(self, proposal_id: str) -> list[ParameterChange]:
+        """Rollback a previously applied evolution."""
+        reverted = self.evolution.rollback(proposal_id)
+
+        self.ledger.append(
+            agent_id=AgentId("system"),
+            action=LedgerAction.EVOLUTION,
+            description=f"Evolution '{proposal_id}' rolled back",
+            outcome="rolled_back",
+        )
+        return reverted
+
+    def get_firm_parameters(
+        self,
+        category: str | None = None,
+    ) -> dict[str, Any]:
+        """Get current FIRM operating parameters."""
+        return self.evolution.get_parameters(category)
+
+    # ── Market ───────────────────────────────────────────────────────────
+
+    def post_task(
+        self,
+        poster_id: str,
+        title: str,
+        description: str = "",
+        category: str = "general",
+        bounty: float = 10.0,
+        deadline_seconds: float = 86400.0,
+    ) -> MarketTask:
+        """
+        Post a task on the internal market (authority-gated at 0.3).
+
+        The poster offers credits as a bounty for task completion.
+        """
+        agent = self._agents.get(AgentId(poster_id))
+        if not agent:
+            raise KeyError(f"Agent {poster_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_POST:
+            raise PermissionError(
+                f"Authority too low to post tasks: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_POST}"
+            )
+        if agent.credits < bounty:
+            raise ValueError(
+                f"Insufficient credits: {agent.credits:.2f} < {bounty:.2f}"
+            )
+
+        task = self.market.post_task(
+            poster_id=AgentId(poster_id),
+            title=title,
+            description=description,
+            category=category,
+            bounty=bounty,
+            deadline_seconds=deadline_seconds,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(poster_id),
+            action=LedgerAction.MARKET_TRANSACTION,
+            description=f"Posted task '{title}' — bounty {bounty}",
+            authority_at_time=agent.authority,
+            credit_delta=0.0,  # Credits escrowed, not yet deducted
+            outcome="success",
+        )
+        return task
+
+    def bid_on_task(
+        self,
+        task_id: str,
+        bidder_id: str,
+        amount: float | None = None,
+        pitch: str = "",
+    ) -> MarketBid:
+        """Place a bid on an open task (authority-gated at 0.2)."""
+        agent = self._agents.get(AgentId(bidder_id))
+        if not agent:
+            raise KeyError(f"Agent {bidder_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_BID:
+            raise PermissionError(
+                f"Authority too low to bid: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_BID}"
+            )
+
+        bid = self.market.place_bid(
+            task_id=task_id,
+            bidder_id=AgentId(bidder_id),
+            bidder_authority=agent.authority,
+            amount=amount,
+            pitch=pitch,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(bidder_id),
+            action=LedgerAction.MARKET_TRANSACTION,
+            description=f"Bid on task '{task_id}' — amount {bid.amount}",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+        return bid
+
+    def accept_bid(self, task_id: str, bid_id: str) -> MarketTask:
+        """Accept a bid and assign the task. Only the poster can accept."""
+        task = self.market.get_task(task_id)
+        if not task:
+            raise KeyError(f"Task {task_id} not found")
+        return self.market.accept_bid(task_id, bid_id)
+
+    def settle_task(
+        self,
+        task_id: str,
+        success: bool,
+        reason: str = "",
+    ) -> Settlement:
+        """
+        Settle a task — transfer credits based on outcome.
+
+        On success: poster pays bidder (minus fee).
+        On failure: bidder gets nothing.
+        """
+        task = self.market.get_task(task_id)
+        if not task:
+            raise KeyError(f"Task {task_id} not found")
+
+        if success:
+            settlement = self.market.complete_task(task_id)
+        else:
+            settlement = self.market.fail_task(task_id, reason)
+
+        # Apply credit transfers to agents
+        poster = self._agents.get(AgentId(settlement.from_agent))
+        worker = self._agents.get(AgentId(settlement.to_agent))
+
+        if poster and success:
+            poster.credits -= (settlement.amount + settlement.fee)
+        elif poster and not success:
+            poster.credits -= settlement.fee
+
+        if worker and success:
+            worker.credits += settlement.amount
+
+        self.ledger.append(
+            agent_id=AgentId(settlement.to_agent) if success else AgentId(settlement.from_agent),
+            action=LedgerAction.MARKET_TRANSACTION,
+            description=(
+                f"Task '{task_id}' {'completed' if success else 'failed'}: "
+                f"{settlement.amount:.2f} credits transferred"
+            ),
+            credit_delta=settlement.amount if success else 0.0,
+            outcome="success" if success else "failure",
+        )
+        return settlement
+
+    def cancel_task(self, task_id: str, canceller_id: str) -> MarketTask:
+        """Cancel an open task (poster only)."""
+        return self.market.cancel_task(task_id, AgentId(canceller_id))
+
+    # ── Meta-Constitutional ──────────────────────────────────────────────
+
+    def propose_amendment(
+        self,
+        proposer_id: str,
+        amendment_type: str,
+        rationale: str = "",
+        invariant_id: str = "",
+        description: str = "",
+        keywords: list[str] | None = None,
+    ) -> Amendment:
+        """
+        Propose a constitutional amendment (authority-gated at 0.9).
+
+        Args:
+            proposer_id: Agent proposing the amendment
+            amendment_type: "add_invariant", "remove_invariant",
+                            "add_keywords", "remove_keywords"
+            rationale: Why this change is needed
+            invariant_id: Target invariant (for modifications) or new ID
+            description: Description for new invariant
+            keywords: Keywords to add/remove or for new invariant
+        """
+        agent = self._agents.get(AgentId(proposer_id))
+        if not agent:
+            raise KeyError(f"Agent {proposer_id} not found")
+        if agent.authority < MIN_AUTHORITY_TO_AMEND:
+            raise PermissionError(
+                f"Authority too low to propose amendment: {agent.authority:.2f} "
+                f"< {MIN_AUTHORITY_TO_AMEND}"
+            )
+
+        kw = keywords or []
+
+        if amendment_type == "add_invariant":
+            amendment = self.meta.propose_add_invariant(
+                proposer_id=AgentId(proposer_id),
+                invariant_id=invariant_id,
+                description=description,
+                keywords=kw,
+                rationale=rationale,
+            )
+        elif amendment_type == "remove_invariant":
+            amendment = self.meta.propose_remove_invariant(
+                proposer_id=AgentId(proposer_id),
+                invariant_id=invariant_id,
+                rationale=rationale,
+            )
+        elif amendment_type == "add_keywords":
+            amendment = self.meta.propose_add_keywords(
+                proposer_id=AgentId(proposer_id),
+                invariant_id=invariant_id,
+                keywords=kw,
+                rationale=rationale,
+            )
+        elif amendment_type == "remove_keywords":
+            amendment = self.meta.propose_remove_keywords(
+                proposer_id=AgentId(proposer_id),
+                invariant_id=invariant_id,
+                keywords=kw,
+                rationale=rationale,
+            )
+        else:
+            raise ValueError(f"Unknown amendment type: {amendment_type}")
+
+        self.ledger.append(
+            agent_id=AgentId(proposer_id),
+            action=LedgerAction.CONSTITUTIONAL_AMENDMENT,
+            description=(
+                f"Amendment proposed: {amendment_type} "
+                f"(invariant: {invariant_id or 'new'})"
+            ),
+            authority_at_time=agent.authority,
+            outcome="proposed",
+        )
+        return amendment
+
+    def review_amendment(self, amendment_id: str) -> Amendment:
+        """Constitutional Agent reviews an amendment for violations."""
+        amendment = self.meta.review(amendment_id)
+
+        self.ledger.append(
+            agent_id=AgentId("constitutional"),
+            action=LedgerAction.CONSTITUTIONAL_AMENDMENT,
+            description=(
+                f"Amendment '{amendment_id}' reviewed: "
+                f"{'passed' if amendment.review_passed else 'VETOED'}"
+            ),
+            outcome="vetoed" if not amendment.review_passed else "review_passed",
+        )
+        return amendment
+
+    def vote_amendment(
+        self,
+        amendment_id: str,
+        voter_id: str,
+        approve: bool,
+    ) -> Amendment:
+        """Cast a weighted vote on a constitutional amendment."""
+        voter = self._agents.get(AgentId(voter_id))
+        if not voter:
+            raise KeyError(f"Agent {voter_id} not found")
+
+        amendment = self.meta.vote(
+            amendment_id=amendment_id,
+            voter_id=AgentId(voter_id),
+            voter_authority=voter.authority,
+            approve=approve,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(voter_id),
+            action=LedgerAction.CONSTITUTIONAL_AMENDMENT,
+            description=(
+                f"Voted {'for' if approve else 'against'} "
+                f"amendment '{amendment_id}'"
+            ),
+            authority_at_time=voter.authority,
+            outcome="success",
+        )
+        return amendment
+
+    def apply_amendment(self, amendment_id: str) -> Amendment:
+        """
+        Finalize and apply a constitutional amendment.
+
+        Automatically finalizes voting, then applies if approved.
+        """
+        eligible = [a for a in self.get_agents() if a.authority >= 0.6]
+        total_weight = sum(a.authority for a in eligible)
+        amendment = self.meta.finalize(amendment_id, total_weight)
+
+        if amendment.status.value != "approved":
+            self.ledger.append(
+                agent_id=AgentId(amendment.proposer_id),
+                action=LedgerAction.CONSTITUTIONAL_AMENDMENT,
+                description=(
+                    f"Amendment '{amendment_id}' {amendment.status.value}"
+                ),
+                outcome=amendment.status.value,
+            )
+            return amendment
+
+        # Apply the amendment
+        applied = self.meta.apply(amendment_id)
+
+        self.ledger.append(
+            agent_id=AgentId(applied.proposer_id),
+            action=LedgerAction.CONSTITUTIONAL_AMENDMENT,
+            description=(
+                f"Amendment '{amendment_id}' applied — "
+                f"constitution revision {self.meta.revision}"
+            ),
+            outcome="applied",
+        )
+        return applied
+
     # ── Health / Status ──────────────────────────────────────────────────
 
     def _check_governance_health(self) -> None:
@@ -778,5 +1221,8 @@ class Firm:
             "human_overrides": self.human.get_stats(),
             "federation": self.federation.get_stats(),
             "reputation": self.reputation.get_stats(),
+            "evolution": self.evolution.get_stats(),
+            "market": self.market.get_stats(),
+            "meta_constitutional": self.meta.get_stats(),
             "uptime_seconds": round(time.time() - self.created_at, 1),
         }

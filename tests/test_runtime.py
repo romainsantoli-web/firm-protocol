@@ -564,3 +564,186 @@ class TestStatusS2:
         assert "reputation" in status
         assert status["federation"]["peers"]["total"] == 0
         assert status["reputation"]["issued_attestations"] == 0
+
+
+# ── S3 Runtime Integration ───────────────────────────────────────────────────
+
+
+class TestEvolutionRuntime:
+    def test_propose_evolution(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("architect", authority=0.9)
+        proposal = firm.propose_evolution(
+            proposer_id=agent.id,
+            changes=[{"category": "authority", "parameter_name": "learning_rate", "new_value": 0.1}],
+            rationale="Faster learning",
+        )
+        assert proposal.status.value == "proposed"
+
+    def test_propose_evolution_low_authority(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("junior", authority=0.3)
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.propose_evolution(
+                proposer_id=agent.id,
+                changes=[{"category": "authority", "parameter_name": "learning_rate", "new_value": 0.1}],
+            )
+
+    def test_vote_and_apply_evolution(self):
+        firm = Firm(name="test")
+        proposer = firm.add_agent("proposer", authority=0.9)
+        voter = firm.add_agent("voter", authority=0.85)
+        proposal = firm.propose_evolution(
+            proposer_id=proposer.id,
+            changes=[{"category": "authority", "parameter_name": "learning_rate", "new_value": 0.1}],
+        )
+        firm.vote_evolution(proposal.id, proposer.id, approve=True)
+        firm.vote_evolution(proposal.id, voter.id, approve=True)
+        applied = firm.apply_evolution(proposal.id)
+        assert len(applied) >= 1
+        assert firm.get_firm_parameters("authority")["learning_rate"] == 0.1
+
+    def test_rollback_evolution(self):
+        firm = Firm(name="test")
+        p = firm.add_agent("p", authority=0.9)
+        v = firm.add_agent("v", authority=0.85)
+        proposal = firm.propose_evolution(
+            proposer_id=p.id,
+            changes=[{"category": "authority", "parameter_name": "learning_rate", "new_value": 0.1}],
+        )
+        firm.vote_evolution(proposal.id, p.id, approve=True)
+        firm.vote_evolution(proposal.id, v.id, approve=True)
+        firm.apply_evolution(proposal.id)
+        assert firm.get_firm_parameters("authority")["learning_rate"] == 0.1
+        firm.rollback_evolution(proposal.id)
+        assert firm.get_firm_parameters("authority")["learning_rate"] == 0.05
+
+
+class TestMarketRuntime:
+    def test_post_task(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("dev", authority=0.5, credits=200.0)
+        task = firm.post_task(
+            poster_id=agent.id,
+            title="Build feature",
+            bounty=50.0,
+        )
+        assert task.title == "Build feature"
+
+    def test_post_task_low_authority(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("noob", authority=0.1, credits=100.0)
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.post_task(poster_id=agent.id, title="Task", bounty=10.0)
+
+    def test_post_task_insufficient_credits(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("broke", authority=0.5, credits=5.0)
+        with pytest.raises(ValueError, match="Insufficient credits"):
+            firm.post_task(poster_id=agent.id, title="Task", bounty=50.0)
+
+    def test_full_market_cycle(self):
+        firm = Firm(name="test")
+        poster = firm.add_agent("poster", authority=0.5, credits=200.0)
+        worker = firm.add_agent("worker", authority=0.4, credits=50.0)
+        initial_poster_credits = poster.credits
+        initial_worker_credits = worker.credits
+
+        task = firm.post_task(poster_id=poster.id, title="Task", bounty=100.0)
+        bid = firm.bid_on_task(task_id=task.id, bidder_id=worker.id, amount=80.0)
+        firm.accept_bid(task.id, bid.id)
+        settlement = firm.settle_task(task.id, success=True)
+
+        assert settlement.amount == 80.0
+        assert poster.credits == initial_poster_credits - 80.0
+        assert worker.credits == initial_worker_credits + 80.0
+
+    def test_settle_task_failure(self):
+        firm = Firm(name="test")
+        poster = firm.add_agent("poster", authority=0.5, credits=200.0)
+        worker = firm.add_agent("worker", authority=0.4, credits=50.0)
+
+        task = firm.post_task(poster_id=poster.id, title="Task", bounty=100.0)
+        bid = firm.bid_on_task(task_id=task.id, bidder_id=worker.id)
+        firm.accept_bid(task.id, bid.id)
+        settlement = firm.settle_task(task.id, success=False, reason="Missed deadline")
+        assert settlement.amount == 0.0
+
+    def test_cancel_task(self):
+        firm = Firm(name="test")
+        poster = firm.add_agent("poster", authority=0.5, credits=200.0)
+        task = firm.post_task(poster_id=poster.id, title="Task", bounty=10.0)
+        cancelled = firm.cancel_task(task.id, poster.id)
+        assert cancelled.status.value == "cancelled"
+
+
+class TestMetaConstitutionalRuntime:
+    def test_propose_amendment(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("lead", authority=0.95)
+        amendment = firm.propose_amendment(
+            proposer_id=agent.id,
+            amendment_type="add_invariant",
+            invariant_id="INV-3",
+            description="Data privacy",
+            keywords=["data breach"],
+        )
+        assert amendment.status.value == "proposed"
+
+    def test_propose_amendment_low_authority(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("junior", authority=0.5)
+        with pytest.raises(PermissionError, match="Authority too low"):
+            firm.propose_amendment(
+                proposer_id=agent.id,
+                amendment_type="add_invariant",
+                invariant_id="INV-3",
+                description="Test",
+                keywords=["test"],
+            )
+
+    def test_full_amendment_cycle(self):
+        firm = Firm(name="test")
+        lead = firm.add_agent("lead", authority=0.95)
+        voter1 = firm.add_agent("v1", authority=0.9)
+        voter2 = firm.add_agent("v2", authority=0.85)
+
+        amendment = firm.propose_amendment(
+            proposer_id=lead.id,
+            amendment_type="add_invariant",
+            invariant_id="INV-3",
+            description="Data privacy",
+            keywords=["data breach"],
+        )
+        reviewed = firm.review_amendment(amendment.id)
+        assert reviewed.review_passed is True
+
+        firm.vote_amendment(amendment.id, voter1.id, approve=True)
+        firm.vote_amendment(amendment.id, voter2.id, approve=True)
+        applied = firm.apply_amendment(amendment.id)
+        assert applied.status.value == "applied"
+        assert len(firm.constitution.invariants) == 3
+
+    def test_unknown_amendment_type(self):
+        firm = Firm(name="test")
+        agent = firm.add_agent("lead", authority=0.95)
+        with pytest.raises(ValueError, match="Unknown amendment type"):
+            firm.propose_amendment(
+                proposer_id=agent.id,
+                amendment_type="invalid_type",
+            )
+
+
+class TestStatusS3:
+    """Test that status includes S3 engine stats."""
+
+    def test_status_includes_s3(self):
+        firm = Firm(name="test")
+        firm.add_agent("dev", authority=0.5)
+        status = firm.status()
+        assert "evolution" in status
+        assert "market" in status
+        assert "meta_constitutional" in status
+        assert status["evolution"]["generation"] == 0
+        assert status["market"]["total_tasks"] == 0
+        assert status["meta_constitutional"]["revision"] == 0
