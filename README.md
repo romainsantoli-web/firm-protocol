@@ -28,7 +28,7 @@ permissions, FIRM implements a self-regulating system where:
 
 ## Architecture
 
-FIRM is built on 12 layers (S0 implements the first 7):
+FIRM is built on 12 layers, all fully implemented:
 
 | Layer | Name | Purpose |
 |-------|------|---------|
@@ -44,6 +44,14 @@ FIRM is built on 12 layers (S0 implements the first 7):
 | 9 | Reputation Bridge | Cross-firm authority portability |
 | 10 | Audit Trail | External accountability interface |
 | 11 | Human Override | Guaranteed human control surface |
+
+Plus 3 advanced capabilities:
+
+| System | Purpose |
+|--------|---------|
+| Evolution Engine | Self-modifying parameters via supermajority vote |
+| Internal Market | Task bounties, bidding, and credit settlement |
+| Meta-Constitutional | Amendment lifecycle for the constitution itself |
 
 ### Two Invariants
 
@@ -65,8 +73,19 @@ pip install -e ".[dev]"
 # Run tests
 python -m pytest tests/ -v
 
-# Try it
-python -c "
+# CLI
+firm init my-org
+firm agent add Alice --authority 0.8
+firm agent add Bob --authority 0.5
+firm agent list
+firm status
+firm audit
+firm repl   # interactive mode
+```
+
+### Python API
+
+```python
 from firm import Firm
 
 org = Firm(name='acme')
@@ -81,9 +100,8 @@ org.record_action(bob.id, success=False, description='Broke CI')
 
 # Check the organization state
 status = org.status()
-print(f'Agents: {status[\"agent_count\"]}')
-print(f'Ledger entries: {status[\"ledger_entries\"]}')
-print(f'Chain valid: {status[\"chain_valid\"]}')
+print(f'Agents: {status["agents"]["total"]}')
+print(f'Chain valid: {status["ledger"]["chain_valid"]}')
 
 # Alice (who succeeded) can now propose changes
 proposal = org.propose(
@@ -92,8 +110,10 @@ proposal = org.propose(
     description='Create a dedicated deployment specialist role',
 )
 print(f'Proposal: {proposal.title} ({proposal.status.value})')
-"
 ```
+
+See [examples/startup_lifecycle.py](examples/startup_lifecycle.py) for a
+full narrated demo covering all 12 layers.
 
 ## Key Concepts
 
