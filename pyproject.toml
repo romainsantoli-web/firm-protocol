@@ -10,25 +10,54 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 authors = [
-    {name = "FIRM Protocol Contributors"}
+    {name = "Romain Santoli"},
+    {name = "FIRM Protocol Contributors"},
 ]
-keywords = ["autonomous-organizations", "multi-agent", "self-evolving", "governance", "protocol"]
+keywords = [
+    "autonomous-organizations",
+    "multi-agent",
+    "self-evolving",
+    "governance",
+    "protocol",
+    "llm",
+    "ai-agents",
+    "firm",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Typing :: Typed",
 ]
+# Core has zero external dependencies — stdlib only
 dependencies = []
 
 [project.scripts]
 firm = "firm.cli:main"
 
 [project.optional-dependencies]
+llm = [
+    "openai>=1.30",
+    "anthropic>=0.25",
+    "mistralai>=1.0",
+    "httpx>=0.27",
+]
+api = [
+    "fastapi>=0.111",
+    "pydantic>=2.0",
+    "uvicorn>=0.30",
+]
+all = [
+    "firm-protocol[llm,api]",
+]
 dev = [
+    "firm-protocol[all]",
     "pytest>=7.4",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.1",
@@ -41,8 +70,10 @@ docs = [
 ]
 
 [project.urls]
-Repository = "https://github.com/firm-protocol/firm"
-Documentation = "https://firm-protocol.org/docs"
+Homepage = "https://github.com/romainsantoli/firm-protocol"
+Repository = "https://github.com/romainsantoli/firm-protocol"
+Issues = "https://github.com/romainsantoli/firm-protocol/issues"
+Changelog = "https://github.com/romainsantoli/firm-protocol/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

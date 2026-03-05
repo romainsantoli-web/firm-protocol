@@ -13,3 +13,7 @@ htmlcov/
 .coverage
 *.log
 .hypothesis/
+tmp/
+*.egg
+.eggs/
+*.whl
