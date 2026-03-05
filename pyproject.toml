@@ -70,10 +70,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/romainsantoli/firm-protocol"
-Repository = "https://github.com/romainsantoli/firm-protocol"
-Issues = "https://github.com/romainsantoli/firm-protocol/issues"
-Changelog = "https://github.com/romainsantoli/firm-protocol/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/romainsantoli-web/firm-protocol"
+Repository = "https://github.com/romainsantoli-web/firm-protocol"
+Issues = "https://github.com/romainsantoli-web/firm-protocol/issues"
+Changelog = "https://github.com/romainsantoli-web/firm-protocol/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
