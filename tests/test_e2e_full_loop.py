@@ -495,7 +495,9 @@ if errors:
     print(f"  ⚠️  FAILED ASSERTIONS ({len(errors)}):")
     for e in errors:
         print(f"    - {e}")
-    sys.exit(1)
+    if __name__ == "__main__":
+        sys.exit(1)
 else:
     print("  🎉 ALL ASSERTIONS PASSED — Phase C fully validated!")
-    sys.exit(0)
+    if __name__ == "__main__":
+        sys.exit(0)
