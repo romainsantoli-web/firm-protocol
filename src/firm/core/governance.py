@@ -42,6 +42,10 @@ DEFAULT_APPROVAL_RATIO = 0.5  # Simple majority
 COOLDOWN_SECONDS = 3600  # 1 hour cooldown after approval (configurable)
 SIMULATION_TIMEOUT_S = 300  # 5 min max for simulations
 
+# Proposal types
+PROPOSAL_TYPE_GENERAL = "general"
+PROPOSAL_TYPE_FUTARCHY = "futarchy"  # Market-based decision-making
+
 
 # ── Vote ─────────────────────────────────────────────────────────────────────
 
@@ -58,7 +62,12 @@ class Vote:
 
     @property
     def weighted_value(self) -> float:
-        """Vote value weighted by authority."""
+        """Vote value weighted by authority.
+
+        For standard proposals: raw authority weight.
+        Use effective_vote_weight (√authority × calibration) for
+        futarchy-aware voting — computed externally.
+        """
         if self.choice == VoteChoice.APPROVE:
             return self.authority_weight
         elif self.choice == VoteChoice.REJECT:
@@ -111,7 +120,7 @@ class Proposal:
     proposer_id: AgentId = field(default_factory=lambda: AgentId(""))
     title: str = ""
     description: str = ""
-    proposal_type: str = "general"  # "general", "role_change", "restructure", "meta_governance"
+    proposal_type: str = "general"  # "general", "role_change", "restructure", "meta_governance", "futarchy"
     status: ProposalStatus = ProposalStatus.DRAFT
     created_at: float = field(default_factory=time.time)
 
@@ -124,6 +133,10 @@ class Proposal:
     votes: list[Vote] = field(default_factory=list)
     quorum_ratio: float = DEFAULT_QUORUM_RATIO
     approval_ratio: float = DEFAULT_APPROVAL_RATIO
+
+    # Futarchy: linked prediction markets
+    prediction_market_ids: list[str] = field(default_factory=list)
+    futarchy_result: dict[str, Any] | None = None
 
     # Lifecycle
     approved_at: float | None = None
@@ -401,3 +414,76 @@ class GovernanceEngine:
         proposals = list(self._proposals.values())
         proposals.sort(key=lambda p: p.created_at, reverse=True)
         return [p.to_dict() for p in proposals[:limit]]
+
+    # ── Futarchy ─────────────────────────────────────────────────────────
+
+    def resolve_futarchy(
+        self,
+        proposal: Proposal,
+        market_outcomes: dict[str, float],
+    ) -> dict[str, Any]:
+        """
+        Resolve a futarchy proposal using prediction market data.
+
+        Instead of voting, the proposal outcome is determined by:
+            outcome = argmax(expected_value per market)
+
+        Each linked market has a probability. The proposal is approved
+        if the "approve" market has higher expected value than the
+        "reject" market (or if there is a single market, P > 0.5).
+
+        Args:
+            proposal: The futarchy proposal
+            market_outcomes: {market_id: market_probability}
+
+        Returns:
+            Resolution dict with outcome and probabilities
+        """
+        if proposal.proposal_type != PROPOSAL_TYPE_FUTARCHY:
+            raise ValueError(
+                f"Proposal {proposal.id} is not futarchy type "
+                f"(type: {proposal.proposal_type})"
+            )
+
+        if not market_outcomes:
+            raise ValueError("No market outcomes provided for futarchy resolution")
+
+        # Simple case: single market — approve if P > 0.5
+        if len(market_outcomes) == 1:
+            market_id, prob = next(iter(market_outcomes.items()))
+            approved = prob > 0.5
+            result = {
+                "method": "futarchy_single",
+                "market_id": market_id,
+                "probability": round(prob, 4),
+                "approved": approved,
+            }
+        else:
+            # Multiple markets: argmax(expected_outcome)
+            best_id = max(market_outcomes, key=lambda k: market_outcomes[k])
+            best_prob = market_outcomes[best_id]
+            result = {
+                "method": "futarchy_argmax",
+                "winning_market": best_id,
+                "probabilities": {
+                    k: round(v, 4) for k, v in market_outcomes.items()
+                },
+                "approved": best_prob > 0.5,
+            }
+
+        proposal.futarchy_result = result
+
+        if result["approved"]:
+            proposal.status = ProposalStatus.COOLDOWN
+            proposal.approved_at = time.time()
+            proposal.cooldown_until = proposal.approved_at + self.cooldown_seconds
+        else:
+            proposal.status = ProposalStatus.REJECTED
+
+        logger.info(
+            "Futarchy resolved proposal %s: %s (prob=%.2f)",
+            proposal.id,
+            "APPROVED" if result["approved"] else "REJECTED",
+            best_prob if len(market_outcomes) > 1 else next(iter(market_outcomes.values())),
+        )
+        return result

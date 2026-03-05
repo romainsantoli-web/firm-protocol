@@ -17,6 +17,7 @@ and are recorded in the ledger.
 from __future__ import annotations
 
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -354,4 +355,218 @@ class SpawnEngine:
             "spawns": sum(1 for e in self._events if e.event_type == "spawn"),
             "merges": sum(1 for e in self._events if e.event_type == "merge"),
             "splits": sum(1 for e in self._events if e.event_type == "split"),
+        }
+
+
+# ── Auto-Restructuring ──────────────────────────────────────────────────────
+
+# Thresholds for automatic restructuring decisions
+AUTO_PRUNE_AUTHORITY = 0.1  # Auto-prune below this
+AUTO_MERGE_SIMILARITY = 0.85  # Cosine similarity threshold for merge
+TASK_ENTROPY_SPAWN_THRESHOLD = 2.0  # Shannon entropy threshold to spawn
+
+
+@dataclass
+class RestructureRecommendation:
+    """A recommendation from the auto-restructurer."""
+
+    action: str  # "prune", "merge", "spawn"
+    reason: str
+    target_agents: list[AgentId] = field(default_factory=list)
+    confidence: float = 0.0  # [0, 1]
+    proposed_name: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "reason": self.reason,
+            "target_agents": self.target_agents,
+            "confidence": round(self.confidence, 4),
+            "proposed_name": self.proposed_name,
+            "metadata": self.metadata,
+        }
+
+
+class AutoRestructurer:
+    """
+    Automatically recommends organizational restructuring based on signals.
+
+    Three mechanisms:
+      - **Auto-prune**: Agents with authority < 0.1 for extended periods
+      - **Auto-merge**: Agents with cosine similarity > 0.85 on roles/tags
+      - **Auto-spawn**: When task entropy exceeds threshold (diverse needs)
+
+    All recommendations go through governance — never applied automatically.
+    """
+
+    def __init__(
+        self,
+        prune_threshold: float = AUTO_PRUNE_AUTHORITY,
+        merge_similarity: float = AUTO_MERGE_SIMILARITY,
+        spawn_entropy: float = TASK_ENTROPY_SPAWN_THRESHOLD,
+    ) -> None:
+        self.prune_threshold = prune_threshold
+        self.merge_similarity = merge_similarity
+        self.spawn_entropy = spawn_entropy
+        self._recommendations: list[RestructureRecommendation] = []
+
+    def analyze(
+        self,
+        agents: list[Agent],
+        task_categories: list[str] | None = None,
+    ) -> list[RestructureRecommendation]:
+        """
+        Analyze the organization and produce restructuring recommendations.
+
+        Args:
+            agents: All active agents
+            task_categories: Recent task categories for entropy calculation
+
+        Returns:
+            List of recommendations (each should become a governance proposal)
+        """
+        recs: list[RestructureRecommendation] = []
+
+        # 1. Auto-prune: agents stuck below threshold
+        recs.extend(self._check_prune(agents))
+
+        # 2. Auto-merge: overlapping agents
+        recs.extend(self._check_merge(agents))
+
+        # 3. Auto-spawn: task diversity exceeds agent specialization
+        if task_categories:
+            recs.extend(self._check_spawn(agents, task_categories))
+
+        self._recommendations.extend(recs)
+        return recs
+
+    def _check_prune(self, agents: list[Agent]) -> list[RestructureRecommendation]:
+        """Identify agents that should be pruned (authority too low)."""
+        recs = []
+        for agent in agents:
+            if not agent.is_active:
+                continue
+            if agent.authority < self.prune_threshold:
+                recs.append(RestructureRecommendation(
+                    action="prune",
+                    reason=(
+                        f"Agent '{agent.name}' authority ({agent.authority:.4f}) "
+                        f"below threshold ({self.prune_threshold})"
+                    ),
+                    target_agents=[agent.id],
+                    confidence=1.0 - (agent.authority / self.prune_threshold),
+                ))
+        return recs
+
+    def _check_merge(self, agents: list[Agent]) -> list[RestructureRecommendation]:
+        """Identify pairs of agents that should be merged (overlapping roles)."""
+        recs = []
+        active = [a for a in agents if a.is_active and a.roles]
+
+        for i, a in enumerate(active):
+            for b in active[i + 1:]:
+                sim = self._role_cosine_similarity(a, b)
+                if sim >= self.merge_similarity:
+                    recs.append(RestructureRecommendation(
+                        action="merge",
+                        reason=(
+                            f"Agents '{a.name}' and '{b.name}' have "
+                            f"{sim:.2%} role overlap (threshold: {self.merge_similarity:.0%})"
+                        ),
+                        target_agents=[a.id, b.id],
+                        confidence=sim,
+                        proposed_name=f"{a.name}+{b.name}",
+                    ))
+        return recs
+
+    def _check_spawn(
+        self,
+        agents: list[Agent],
+        task_categories: list[str],
+    ) -> list[RestructureRecommendation]:
+        """Check if task entropy warrants spawning a new specialist."""
+        if not task_categories:
+            return []
+
+        entropy = self._shannon_entropy(task_categories)
+        agent_count = len([a for a in agents if a.is_active])
+
+        # More diverse tasks than agents can cover → recommend spawn
+        if entropy > self.spawn_entropy and agent_count > 0:
+            # Find the most common underserved category
+            counts: dict[str, int] = {}
+            for cat in task_categories:
+                counts[cat] = counts.get(cat, 0) + 1
+            top_cat = max(counts, key=lambda k: counts[k])
+
+            # Check if any agent has role matching this category
+            covered = any(
+                a.has_role(top_cat) for a in agents if a.is_active
+            )
+
+            if not covered:
+                return [RestructureRecommendation(
+                    action="spawn",
+                    reason=(
+                        f"Task entropy ({entropy:.2f}) exceeds threshold "
+                        f"({self.spawn_entropy}). Top uncovered category: '{top_cat}' "
+                        f"({counts[top_cat]} tasks)"
+                    ),
+                    confidence=min(1.0, entropy / (self.spawn_entropy * 2)),
+                    proposed_name=f"{top_cat}-specialist",
+                    metadata={"category": top_cat, "entropy": round(entropy, 4)},
+                )]
+        return []
+
+    @staticmethod
+    def _role_cosine_similarity(a: Agent, b: Agent) -> float:
+        """Cosine similarity between two agents' role sets."""
+        roles_a = {r.name for r in a.roles}
+        roles_b = {r.name for r in b.roles}
+
+        if not roles_a or not roles_b:
+            return 0.0
+
+        all_roles = roles_a | roles_b
+        vec_a = [1.0 if r in roles_a else 0.0 for r in sorted(all_roles)]
+        vec_b = [1.0 if r in roles_b else 0.0 for r in sorted(all_roles)]
+
+        dot = sum(x * y for x, y in zip(vec_a, vec_b))
+        mag_a = math.sqrt(sum(x * x for x in vec_a))
+        mag_b = math.sqrt(sum(x * x for x in vec_b))
+
+        if mag_a == 0 or mag_b == 0:
+            return 0.0
+        return dot / (mag_a * mag_b)
+
+    @staticmethod
+    def _shannon_entropy(categories: list[str]) -> float:
+        """Compute Shannon entropy of task category distribution."""
+        if not categories:
+            return 0.0
+
+        counts: dict[str, int] = {}
+        for cat in categories:
+            counts[cat] = counts.get(cat, 0) + 1
+
+        total = len(categories)
+        entropy = 0.0
+        for count in counts.values():
+            p = count / total
+            if p > 0:
+                entropy -= p * math.log2(p)
+        return entropy
+
+    def get_recommendations(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Get all recommendations."""
+        return [r.to_dict() for r in self._recommendations[-limit:]]
+
+    def get_stats(self) -> dict[str, Any]:
+        by_action: dict[str, int] = {}
+        for r in self._recommendations:
+            by_action[r.action] = by_action.get(r.action, 0) + 1
+        return {
+            "total_recommendations": len(self._recommendations),
+            "by_action": by_action,
         }

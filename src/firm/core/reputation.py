@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -199,6 +200,8 @@ class ReputationBridge:
         self._imports: dict[str, ImportedReputation] = {}  # keyed by import id
         # Per-agent import tracking
         self._agent_imports: dict[str, list[str]] = {}  # agent_id → [import_ids]
+        # Prediction accuracy attestations
+        self._prediction_attestations: list[PredictionAccuracyAttestation] = []
 
     # ── Issue attestations (outbound) ────────────────────────────────────
 
@@ -440,6 +443,34 @@ class ReputationBridge:
             result = [a for a in result if a.is_valid]
         return result
 
+    # ── Prediction Attestations ────────────────────────────────────────────
+
+    def issue_prediction_attestation(
+        self,
+        agent_id: AgentId,
+        markets_participated: int,
+        avg_brier_score: float,
+        calibration_score: float,
+        total_profit: float = 0.0,
+    ) -> "PredictionAccuracyAttestation":
+        """
+        Issue a prediction accuracy attestation for an agent.
+
+        This certifies the agent's prediction market track record
+        so peer FIRMs can assess their forecasting ability.
+        """
+        att = PredictionAccuracyAttestation(
+            agent_id=agent_id,
+            source_firm=self._home_id,
+            markets_participated=markets_participated,
+            avg_brier_score=avg_brier_score,
+            calibration_score=calibration_score,
+            total_profit=total_profit,
+        )
+        att.seal()
+        self._prediction_attestations.append(att)
+        return att
+
     # ── Stats ────────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict[str, Any]:
@@ -458,4 +489,108 @@ class ReputationBridge:
             "total_imports": len(self._imports),
             "total_imported_authority": round(total_imported, 4),
             "agents_with_imports": len(self._agent_imports),
+            "prediction_attestations": len(self._prediction_attestations),
         }
+
+
+# ── Prediction Accuracy Attestation ─────────────────────────────────────────
+
+@dataclass
+class PredictionAccuracyAttestation:
+    """
+    Attestation of an agent's prediction market accuracy.
+
+    Issued by a FIRM to vouch for an agent's calibration quality,
+    enabling cross-firm trust in prediction capabilities.
+    """
+
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:12])
+    agent_id: AgentId = field(default_factory=lambda: AgentId(""))
+    source_firm: FirmId = field(default_factory=lambda: FirmId(""))
+    markets_participated: int = 0
+    avg_brier_score: float = 0.0  # Lower = better calibration
+    calibration_score: float = 1.0  # EMA calibration from PredictionEngine
+    total_profit: float = 0.0
+    created_at: float = field(default_factory=time.time)
+    attestation_hash: str = ""
+
+    def compute_hash(self) -> str:
+        payload = json.dumps({
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "source_firm": self.source_firm,
+            "markets_participated": self.markets_participated,
+            "avg_brier_score": self.avg_brier_score,
+            "calibration_score": self.calibration_score,
+            "created_at": self.created_at,
+        }, sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def seal(self) -> None:
+        self.attestation_hash = self.compute_hash()
+
+    def verify(self) -> bool:
+        if not self.attestation_hash:
+            return False
+        return self.attestation_hash == self.compute_hash()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "agent_id": self.agent_id,
+            "source_firm": self.source_firm,
+            "markets_participated": self.markets_participated,
+            "avg_brier_score": round(self.avg_brier_score, 4),
+            "calibration_score": round(self.calibration_score, 4),
+            "total_profit": round(self.total_profit, 2),
+            "created_at": self.created_at,
+            "attestation_hash": self.attestation_hash,
+        }
+
+
+def global_authority(
+    local_authority: float,
+    calibration_score: float = 1.0,
+    peer_attestation_sum: float = 0.0,
+    *,
+    alpha: float = 0.6,
+    beta: float = 0.25,
+    gamma: float = 0.15,
+) -> float:
+    """
+    Compute global authority combining local + prediction + peer signals.
+
+    Formula:
+        G = α·local + β·(local × calibration) + γ·min(cap, Σ peer_attestations)
+
+    Where:
+        - α + β + γ = 1.0 (weights must sum to 1)
+        - calibration_score ∈ [0.1, 2.0] from prediction EMA
+        - peer_attestation_sum = sum of effective_authority from imports
+        - cap = 0.3 (max peer contribution)
+
+    Properties:
+        - Pure local authority if no prediction/peer data (calibration=1, peers=0)
+        - Good predictors get up to 2× the β component
+        - Peer attestations are capped to prevent gaming
+
+    Args:
+        local_authority: Agent's Hebbian authority [0, 1]
+        calibration_score: Prediction calibration EMA [0.1, 2.0]
+        peer_attestation_sum: Total imported authority from peers
+        alpha: Weight for local authority
+        beta: Weight for prediction-adjusted authority
+        gamma: Weight for peer attestations
+
+    Returns:
+        Global authority score clamped to [0, 1]
+    """
+    cap = MAX_IMPORTED_AUTHORITY_BOOST  # 0.3
+    peer_component = min(cap, max(0.0, peer_attestation_sum))
+
+    g = (
+        alpha * local_authority
+        + beta * (local_authority * calibration_score)
+        + gamma * peer_component
+    )
+    return max(0.0, min(1.0, g))

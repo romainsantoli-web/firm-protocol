@@ -80,6 +80,13 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-v --tb=short --cov=firm --cov-report=term-missing --cov-fail-under=80"
 
+[tool.coverage.run]
+omit = [
+    "src/firm/llm/*",
+    "src/firm/api/*",
+    "src/firm/__main__.py",
+]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

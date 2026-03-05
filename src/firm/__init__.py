@@ -13,7 +13,7 @@ Two invariants, non-negotiable:
 Everything else is negotiable. Including the protocol itself.
 """
 
-__version__ = "0.5.0"
+__version__ = "1.0.0"
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditFinding, AuditReport
@@ -32,13 +32,23 @@ from firm.core.ledger import ResponsibilityLedger, LedgerEntry
 from firm.core.market import MarketEngine, MarketTask, MarketBid, Settlement
 from firm.core.memory import MemoryEngine, MemoryEntry
 from firm.core.meta import MetaConstitutional, Amendment
+from firm.core.prediction import (
+    PredictionEngine,
+    PredictionMarket,
+    PredictionSettlement,
+    Position,
+    MarketStatus,
+    PositionSide,
+)
 from firm.core.reputation import (
     ReputationBridge,
     ReputationAttestation,
     ImportedReputation,
+    PredictionAccuracyAttestation,
+    global_authority,
 )
 from firm.core.roles import RoleEngine, RoleDefinition, RoleAssignment
-from firm.core.spawn import SpawnEngine, SpawnEvent
+from firm.core.spawn import SpawnEngine, SpawnEvent, AutoRestructurer, RestructureRecommendation
 from firm.core.types import AgentId, FirmId, Severity
 from firm.core.events import EventBus, Event
 from firm.core.plugins import PluginManager, FirmPlugin
@@ -90,6 +100,16 @@ __all__ = [
     "AgentId",
     "FirmId",
     "Severity",
+    "PredictionEngine",
+    "PredictionMarket",
+    "PredictionSettlement",
+    "Position",
+    "MarketStatus",
+    "PositionSide",
+    "PredictionAccuracyAttestation",
+    "global_authority",
+    "AutoRestructurer",
+    "RestructureRecommendation",
     "save_firm",
     "load_firm",
     "snapshot",

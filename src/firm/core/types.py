@@ -80,3 +80,6 @@ class LedgerAction(str, enum.Enum):
     EVOLUTION = "evolution"
     MARKET_TRANSACTION = "market_transaction"
     CONSTITUTIONAL_AMENDMENT = "constitutional_amendment"
+    # S4 — Prediction Markets
+    PREDICTION = "prediction"
+    PREDICTION_SETTLEMENT = "prediction_settlement"

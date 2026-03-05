@@ -71,6 +71,7 @@ class MessageType(str, Enum):
     REQUEST = "request"            # Requesting action/resource
     RESPONSE = "response"          # Response to a request
     ATTESTATION = "attestation"    # Reputation/trust attestation
+    PREDICTION_BROADCAST = "prediction_broadcast"  # Shared prediction market
 
 
 class SecondmentStatus(str, Enum):

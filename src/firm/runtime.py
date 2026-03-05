@@ -62,8 +62,16 @@ from firm.core.reputation import (
 )
 from firm.core.events import EventBus, Event
 from firm.core.plugins import PluginManager, FirmPlugin
+from firm.core.prediction import (
+    PredictionEngine,
+    PredictionMarket,
+    PredictionSettlement,
+    Position,
+    MarketStatus,
+    PositionSide,
+)
 from firm.core.roles import RoleEngine, RoleAssignment, RoleDefinition
-from firm.core.spawn import SpawnEngine
+from firm.core.spawn import SpawnEngine, AutoRestructurer, RestructureRecommendation
 from firm.core.types import (
     AgentId,
     AgentStatus,
@@ -130,6 +138,10 @@ class Firm:
         # S5 — Event bus & plugin system
         self.events = EventBus()
         self.plugins = PluginManager()
+
+        # v1.0 — Decision Economics & Self-Restructuring
+        self.prediction = PredictionEngine()
+        self.restructurer = AutoRestructurer()
 
         # Agent registry
         self._agents: dict[str, Agent] = {}
@@ -575,6 +587,235 @@ class Firm:
             outcome="success",
         )
         return child_a, child_b
+
+    # ── Prediction Markets (Decision Economics) ──────────────────────────
+
+    def create_prediction_market(
+        self,
+        creator_id: str,
+        question: str,
+        category: str = "general",
+        deadline_hours: float = 24.0,
+        description: str = "",
+        linked_proposal_id: str | None = None,
+    ) -> PredictionMarket:
+        """
+        Create a prediction market.
+
+        Agents stake credits on outcomes. Resolution updates authority
+        calibration via Brier scores.
+        """
+        agent = self._agents.get(AgentId(creator_id))
+        if not agent:
+            raise KeyError(f"Agent {creator_id} not found")
+        if not agent.is_active:
+            raise ValueError(f"Agent {creator_id} is not active")
+
+        market = self.prediction.create_market(
+            question=question,
+            creator_id=AgentId(creator_id),
+            category=category,
+            deadline_seconds=deadline_hours * 3600,
+            description=description,
+            proposal_id=linked_proposal_id,
+        )
+
+        self.ledger.append(
+            agent_id=AgentId(creator_id),
+            action=LedgerAction.PREDICTION,
+            description=f"Created prediction market: {question}",
+            authority_at_time=agent.authority,
+            outcome="success",
+        )
+
+        self.events.emit("prediction.market_created", {
+            "market_id": market.id,
+            "creator_id": creator_id,
+            "question": question,
+        }, source="runtime")
+
+        return market
+
+    def predict(
+        self,
+        agent_id: str,
+        market_id: str,
+        side: str,
+        stake: float,
+        probability: float = 0.5,
+    ) -> Position:
+        """
+        Place a prediction (take a position) on a market.
+
+        Args:
+            agent_id: Agent making the prediction
+            market_id: Target market
+            side: "yes" or "no"
+            stake: Credits to stake
+            probability: Agent's estimated probability [0, 1]
+        """
+        agent = self._agents.get(AgentId(agent_id))
+        if not agent:
+            raise KeyError(f"Agent {agent_id} not found")
+        if not agent.is_active:
+            raise ValueError(f"Agent {agent_id} is not active")
+        if agent.credits < stake:
+            raise ValueError(
+                f"Insufficient credits: {agent.credits:.2f} < {stake:.2f}"
+            )
+
+        position_side = PositionSide(side)
+        position = self.prediction.take_position(
+            market_id=market_id,
+            agent_id=AgentId(agent_id),
+            agent_authority=agent.authority,
+            side=position_side,
+            stake=stake,
+            probability=probability,
+        )
+
+        # Escrow credits
+        agent.credits -= stake
+
+        self.ledger.append(
+            agent_id=AgentId(agent_id),
+            action=LedgerAction.PREDICTION,
+            description=(
+                f"Predicted {side} on market '{market_id}' "
+                f"(stake={stake}, p={probability})"
+            ),
+            authority_at_time=agent.authority,
+            credit_delta=-stake,
+            outcome="success",
+        )
+
+        self.events.emit("prediction.position_taken", {
+            "market_id": market_id,
+            "agent_id": agent_id,
+            "side": side,
+            "stake": stake,
+        }, source="runtime")
+
+        return position
+
+    def resolve_prediction(
+        self,
+        market_id: str,
+        outcome: bool,
+        resolver_id: str | None = None,
+    ) -> list[PredictionSettlement]:
+        """
+        Resolve a prediction market and settle positions.
+
+        Winners receive payouts. Authority calibration bonuses are
+        applied based on Brier scores.
+
+        Returns:
+            List of PredictionSettlement records (one per position).
+        """
+        settlements = self.prediction.resolve(market_id, outcome)
+
+        # Apply credit payouts and calibration bonuses
+        for s in settlements:
+            agent = self._agents.get(AgentId(s.agent_id))
+            if agent:
+                # Credit payout
+                agent.credits += s.payout
+
+                # Apply calibration bonus via calibration score
+                cal = self.prediction.get_calibration(AgentId(s.agent_id))
+                cal_bonus = cal - 1.0  # positive if well-calibrated
+                if abs(cal_bonus) > 0.001:
+                    self.authority.update(
+                        agent,
+                        success=s.was_correct,
+                        reason=f"Prediction settled: market {market_id}",
+                        calibration_bonus=cal_bonus,
+                    )
+
+        total_staked = sum(s.stake for s in settlements)
+
+        self.ledger.append(
+            agent_id=AgentId(resolver_id or "system"),
+            action=LedgerAction.PREDICTION_SETTLEMENT,
+            description=(
+                f"Market '{market_id}' resolved: "
+                f"outcome={'YES' if outcome else 'NO'}, "
+                f"{len(settlements)} positions settled"
+            ),
+            outcome="success",
+        )
+
+        self.events.emit("prediction.resolved", {
+            "market_id": market_id,
+            "outcome": outcome,
+            "total_staked": total_staked,
+        }, source="runtime")
+
+        return settlements
+
+    def view_predictions(
+        self,
+        market_id: str | None = None,
+        agent_id: str | None = None,
+        category: str | None = None,
+    ) -> dict[str, Any]:
+        """View prediction markets, positions, or agent stats."""
+        result: dict[str, Any] = {}
+
+        if market_id:
+            market = self.prediction._markets.get(market_id)
+            if market:
+                result["market"] = {
+                    "id": market.id,
+                    "question": market.question,
+                    "status": market.status.value,
+                    "market_probability": round(market.market_probability, 4),
+                    "total_stake": round(market.total_stake, 2),
+                    "positions": len(market.positions),
+                }
+            else:
+                result["error"] = f"Market {market_id} not found"
+
+        if agent_id:
+            result["agent_stats"] = self.prediction.get_agent_prediction_stats(
+                AgentId(agent_id)
+            )
+
+        if category:
+            markets = [
+                m for m in self.prediction._markets.values()
+                if m.category == category
+            ]
+            result["markets_in_category"] = len(markets)
+
+        if not market_id and not agent_id and not category:
+            result["stats"] = self.prediction.get_stats()
+            result["open_markets"] = [
+                {"id": m.id, "question": m.question}
+                for m in self.prediction.get_open_markets()
+            ]
+
+        return result
+
+    def analyze_restructuring(
+        self,
+        task_categories: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Run the auto-restructurer and get recommendations.
+
+        Recommendations are advisory — they should be submitted as
+        governance proposals for approval.
+        """
+        agents = self.get_agents(active_only=True)
+        recs = self.restructurer.analyze(agents, task_categories)
+
+        for rec in recs:
+            self.events.emit("restructure.recommendation", rec.to_dict(),
+                             source="runtime")
+
+        return [r.to_dict() for r in recs]
 
     # ── Audit (Layer 10) ─────────────────────────────────────────────────
 
@@ -1261,6 +1502,8 @@ class Firm:
             "reputation": self.reputation.get_stats(),
             "evolution": self.evolution.get_stats(),
             "market": self.market.get_stats(),
+            "prediction": self.prediction.get_stats(),
+            "restructurer": self.restructurer.get_stats(),
             "meta_constitutional": self.meta.get_stats(),
             "events": self.events.get_stats(),
             "plugins": self.plugins.get_stats(),

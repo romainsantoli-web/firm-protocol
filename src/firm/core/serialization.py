@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SERIALIZATION_VERSION = "1.0.0"
+SERIALIZATION_VERSION = "1.1.0"
 
 
 def save_firm(firm: "Firm", path: str | Path | None = None) -> dict[str, Any]:
@@ -237,6 +237,47 @@ def _extract_state(firm: "Firm") -> dict[str, Any]:
         "market": firm.market.get_stats(),
         "federation": firm.federation.get_stats(),
         "reputation": firm.reputation.get_stats(),
+        "prediction": _extract_prediction_state(firm),
+    }
+
+
+def _extract_prediction_state(firm: "Firm") -> dict[str, Any]:
+    """Extract prediction market state for serialization."""
+    markets = []
+    for m in firm.prediction._markets.values():
+        markets.append({
+            "id": m.id,
+            "creator_id": m.creator_id,
+            "question": m.question,
+            "description": m.description,
+            "category": m.category,
+            "status": m.status.value,
+            "aggregated_probability": m.aggregated_probability,
+            "total_staked": m.total_staked,
+            "created_at": m.created_at,
+            "deadline": m.deadline,
+            "outcome": m.outcome,
+            "resolved_at": m.resolved_at,
+            "linked_proposal_id": m.linked_proposal_id,
+            "positions": [
+                {
+                    "agent_id": p.agent_id,
+                    "side": p.side.value,
+                    "stake": p.stake,
+                    "probability": p.probability,
+                    "authority_weight": p.authority_weight,
+                    "timestamp": p.timestamp,
+                }
+                for p in m.positions
+            ],
+        })
+
+    calibration = dict(firm.prediction._calibration)
+
+    return {
+        "markets": markets,
+        "calibration_scores": calibration,
+        "stats": firm.prediction.get_stats(),
     }
 
 
@@ -310,10 +351,47 @@ def _restore_state(state: dict[str, Any]) -> "Firm":
     if const_state.get("kill_switch_active"):
         firm.constitution.activate_kill_switch(reason="restored from saved state")
 
+    # Restore prediction markets
+    pred_state = state.get("prediction", {})
+    for mdata in pred_state.get("markets", []):
+        from firm.core.prediction import PredictionMarket, Position, MarketStatus, PositionSide
+        positions = []
+        for pdata in mdata.get("positions", []):
+            positions.append(Position(
+                agent_id=AgentId(pdata["agent_id"]),
+                side=PositionSide(pdata["side"]),
+                stake=pdata["stake"],
+                probability=pdata["probability"],
+                authority_weight=pdata["authority_weight"],
+                timestamp=pdata["timestamp"],
+            ))
+        market = PredictionMarket(
+            id=mdata["id"],
+            creator_id=AgentId(mdata["creator_id"]),
+            question=mdata["question"],
+            description=mdata.get("description", ""),
+            category=mdata.get("category", "general"),
+            status=MarketStatus(mdata["status"]),
+            aggregated_probability=mdata.get("aggregated_probability", 0.5),
+            total_staked=mdata.get("total_staked", 0.0),
+            created_at=mdata.get("created_at", time.time()),
+            deadline=mdata.get("deadline", 0.0),
+            outcome=mdata.get("outcome"),
+            resolved_at=mdata.get("resolved_at"),
+            linked_proposal_id=mdata.get("linked_proposal_id"),
+            positions=positions,
+        )
+        firm.prediction._markets[market.id] = market
+
+    # Restore calibration scores
+    for aid, score in pred_state.get("calibration_scores", {}).items():
+        firm.prediction._calibration[AgentId(aid)] = score
+
     logger.info(
-        "FIRM '%s' restored: %d agents, %d memories",
+        "FIRM '%s' restored: %d agents, %d memories, %d prediction markets",
         firm.name,
         len(firm._agents),
         len(firm.memory._memories),
+        len(firm.prediction._markets),
     )
     return firm

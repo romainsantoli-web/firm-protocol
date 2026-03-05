@@ -28,6 +28,7 @@ Thresholds:
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -100,32 +101,44 @@ class AuthorityEngine:
 
     # ── Core computation ─────────────────────────────────────────────────
 
-    def compute_delta(self, activated: bool) -> float:
+    def compute_delta(
+        self,
+        activated: bool,
+        calibration_bonus: float = 0.0,
+    ) -> float:
         """
         Compute the authority delta for a single event.
 
-        Hebbian formula:
-            delta = (learning_rate × activation) - (decay × (1 - activation))
+        Extended Hebbian formula:
+            delta = (lr × activation × (1 + calibration_bonus)) - (decay × (1 - activation))
 
-        Success (activated=True):  delta = +learning_rate
+        Where calibration_bonus ∈ [0, 1] comes from the agent's prediction
+        market calibration score (0 = no bonus, 1 = double learning).
+
+        Success (activated=True):  delta = +learning_rate × (1 + bonus)
         Failure (activated=False): delta = -decay
         """
         activation = 1.0 if activated else 0.0
-        return (self.learning_rate * activation) - (self.decay * (1.0 - activation))
+        bonus = max(0.0, min(1.0, calibration_bonus))
+        return (self.learning_rate * activation * (1.0 + bonus)) - (self.decay * (1.0 - activation))
 
     def update(
         self,
         agent: Agent,
         success: bool,
         reason: str = "",
+        calibration_bonus: float = 0.0,
     ) -> AuthorityChange:
         """
         Update an agent's authority based on a success/failure event.
 
+        The calibration_bonus (from prediction markets) amplifies learning
+        for well-calibrated agents.
+
         Returns the AuthorityChange record.
         """
         old = agent.authority
-        delta = self.compute_delta(success)
+        delta = self.compute_delta(success, calibration_bonus=calibration_bonus)
         new = max(AUTHORITY_MIN, min(AUTHORITY_MAX, old + delta))
         new = round(new, 4)
 
@@ -236,6 +249,28 @@ class AuthorityEngine:
         """Rank agents by authority score (descending)."""
         active = [(a.id, a.authority) for a in agents if a.is_active]
         return sorted(active, key=lambda x: x[1], reverse=True)
+
+    @staticmethod
+    def sqrt_authority(authority: float) -> float:
+        """√authority for anti-oligarchy voting weight.
+
+        An agent with authority 0.81 has voting weight 0.9 — the gap
+        between top and bottom is compressed, preventing runaway
+        concentration.
+        """
+        return math.sqrt(max(0.0, authority))
+
+    def effective_vote_weight(
+        self,
+        agent: Agent,
+        calibration_score: float = 1.0,
+    ) -> float:
+        """Compute vote weight = √authority × calibration_score.
+
+        This is the weight used in governance votes and prediction
+        aggregation. Higher calibration amplifies the weight.
+        """
+        return self.sqrt_authority(agent.authority) * calibration_score
 
     def get_history(
         self,

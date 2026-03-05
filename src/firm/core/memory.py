@@ -43,6 +43,36 @@ SIMILARITY_THRESHOLD = 0.3  # For tag-based similarity
 
 
 @dataclass
+class StructuredClaim:
+    """A structured prediction claim linked to a memory.
+
+    When agents make predictions, the claim is recorded in memory
+    alongside evidence and counter-claims. After the prediction
+    market resolves, the resolution field is updated.
+    """
+
+    claim: str = ""
+    evidence: list[str] = field(default_factory=list)
+    confidence: float = 0.5  # Agent's stated confidence [0, 1]
+    prediction_id: str = ""  # Link to prediction market position
+    market_id: str = ""  # Link to prediction market
+    counter_claims: list[str] = field(default_factory=list)
+    resolution: str = ""  # "correct", "incorrect", "pending"
+    resolved_at: float | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "claim": self.claim,
+            "evidence": self.evidence,
+            "confidence": round(self.confidence, 4),
+            "prediction_id": self.prediction_id,
+            "market_id": self.market_id,
+            "counter_claims": self.counter_claims,
+            "resolution": self.resolution or "pending",
+        }
+
+
+@dataclass
 class MemoryEntry:
     """
     A single unit of collective knowledge.
@@ -68,6 +98,7 @@ class MemoryEntry:
     reinforced_by: list[AgentId] = field(default_factory=list)
     challenged_by: list[AgentId] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    structured_claim: StructuredClaim | None = None  # Optional prediction claim
 
     @property
     def age_seconds(self) -> float:
