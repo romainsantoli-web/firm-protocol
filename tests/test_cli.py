@@ -35,7 +35,7 @@ class TestCLIVersion:
         assert exc.value.code == 0
         out = capsys.readouterr().out
         assert "firm" in out
-        assert "1.0.0" in out
+        assert "1.1.0" in out
 
     def test_no_args_shows_help(self, capsys):
         with pytest.raises(SystemExit) as exc:

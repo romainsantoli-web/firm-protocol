@@ -3,6 +3,24 @@
 All notable changes to FIRM Protocol are documented here.  
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-03-05
+
+### Added
+- **BountyHunter Module** (`firm.bounty`) — Multi-agent bug bounty hunting platform
+  - 8 specialised agents: hunt-director, recon-agent, web-hunter, api-hunter, code-auditor, mobile-hunter, web3-hunter, report-writer
+  - Scope enforcement with wildcard domains, CIDR ranges, private IP blocking
+  - CVSS v3.1 calculator with severity classification
+  - Deduplication engine (title + endpoint + CWE + cosine similarity)
+  - Triage pipeline (5-stage: scope → dedup → CVSS → autosubmit → review)
+  - Campaign orchestrator (RECON → SCAN → EXPLOIT → REPORT → FEEDBACK)
+  - Reward engine with tier-based multipliers and streak bonuses
+  - HackerOne API v4 client (programmes, scope, report submission)
+  - 12 LLM tools for external scanners (nmap, nuclei, subfinder, katana, ffuf, nikto, semgrep, httpx)
+  - Factory function creating a fully-wired FIRM with all 8 agents
+- **CLI** — `firm bounty` subcommands: `agents`, `init`, `scope`, `campaign`, `cvss`
+- `bounty` optional dependency group (`httpx`, `pyyaml`)
+- 107 new tests (total: 1120), coverage 93.78%
+
 ## [1.0.0] — 2026-03-05
 
 ### Added
@@ -56,6 +74,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), [Semantic Vers
 - **Self-Modifying Evolution** — parameter updates via ≥75% supermajority with hard safety bounds
 - Property-based tests (Hypothesis), stress tests, E2E integration tests
 
+[1.1.0]: https://github.com/romainsantoli-web/firm-protocol/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/romainsantoli-web/firm-protocol/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/romainsantoli-web/firm-protocol/compare/v0.1.0...v0.5.0
 [0.1.0]: https://github.com/romainsantoli-web/firm-protocol/releases/tag/v0.1.0

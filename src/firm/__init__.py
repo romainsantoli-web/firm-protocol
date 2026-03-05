@@ -13,7 +13,7 @@ Two invariants, non-negotiable:
 Everything else is negotiable. Including the protocol itself.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditFinding, AuditReport
