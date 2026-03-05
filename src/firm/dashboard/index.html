@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIRM Protocol — Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e1e4ed;
+            --muted: #8b8fa3;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --blue: #3b82f6;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 1.5rem;
+            line-height: 1.5;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        h2 { font-size: 1.1rem; color: var(--accent); margin-bottom: 0.75rem; }
+        h3 { font-size: 0.9rem; margin-bottom: 0.5rem; }
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; border-bottom: 1px solid var(--border); padding-bottom: 1rem;
+        }
+        .header .status {
+            display: flex; gap: 1rem; align-items: center;
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot.green { background: var(--green); }
+        .dot.red { background: var(--red); }
+        .dot.amber { background: var(--amber); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+        .card {
+            background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem;
+        }
+        .card.full-width { grid-column: 1 / -1; }
+        .stat-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+        .stat {
+            background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem 1.25rem; flex: 1; min-width: 150px;
+        }
+        .stat .value { font-size: 1.8rem; font-weight: 700; }
+        .stat .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+        .authority-bar {
+            height: 6px; background: var(--border); border-radius: 3px; margin-top: 4px; overflow: hidden;
+        }
+        .authority-bar .fill {
+            height: 100%; border-radius: 3px; transition: width 0.5s ease;
+        }
+        .agent-card {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px;
+            margin-bottom: 0.5rem; cursor: pointer; transition: background 0.15s;
+        }
+        .agent-card:hover { background: rgba(99,102,241,0.08); }
+        .agent-name { font-weight: 600; }
+        .agent-meta { font-size: 0.8rem; color: var(--muted); }
+        .badge {
+            padding: 2px 8px; border-radius: 10px; font-size: 0.7rem; font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge.success { background: rgba(34,197,94,0.15); color: var(--green); }
+        .badge.failure { background: rgba(239,68,68,0.15); color: var(--red); }
+        .badge.running { background: rgba(59,130,246,0.15); color: var(--blue); }
+        .task-entry {
+            padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem;
+        }
+        .task-entry:last-child { border-bottom: none; }
+        .task-entry .task-time { color: var(--muted); font-size: 0.75rem; }
+        .ledger-entry {
+            padding: 0.4rem 0; border-bottom: 1px solid rgba(42,45,58,0.5); font-size: 0.8rem;
+        }
+        .btn {
+            background: var(--accent); color: white; border: none; padding: 0.5rem 1rem;
+            border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+        input, select, textarea {
+            background: var(--bg); border: 1px solid var(--border); color: var(--text);
+            padding: 0.5rem; border-radius: 4px; font-size: 0.85rem; width: 100%;
+            font-family: inherit;
+        }
+        textarea { min-height: 80px; resize: vertical; }
+        .form-group { margin-bottom: 0.75rem; }
+        .form-group label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+        .form-row { display: flex; gap: 0.75rem; }
+        .form-row > * { flex: 1; }
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none;
+            justify-content: center; align-items: center; z-index: 100;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+            padding: 1.5rem; width: 500px; max-width: 95vw; max-height: 80vh; overflow-y: auto;
+        }
+        .empty { color: var(--muted); font-style: italic; text-align: center; padding: 2rem; }
+        #log { font-family: 'Fira Code', 'SF Mono', monospace; font-size: 0.75rem; max-height: 300px; overflow-y: auto; }
+        #log .entry { padding: 2px 0; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>⚡ FIRM Protocol</h1>
+        <span style="color: var(--muted); font-size: 0.85rem;">Self-evolving autonomous organization</span>
+    </div>
+    <div class="status">
+        <span id="ws-status"><span class="dot red"></span> Disconnected</span>
+        <button class="btn secondary" onclick="refreshAll()">↻ Refresh</button>
+        <button class="btn" onclick="showCreateFirm()">+ New FIRM</button>
+    </div>
+</div>
+
+<!-- Stats row -->
+<div class="stat-row" id="stats">
+    <div class="stat"><div class="value" id="stat-agents">0</div><div class="label">Agents</div></div>
+    <div class="stat"><div class="value" id="stat-tasks">0</div><div class="label">Tasks</div></div>
+    <div class="stat"><div class="value" id="stat-tokens">0</div><div class="label">Tokens</div></div>
+    <div class="stat"><div class="value" id="stat-cost">$0.00</div><div class="label">Cost</div></div>
+    <div class="stat"><div class="value" id="stat-authority">—</div><div class="label">Avg Authority</div></div>
+</div>
+
+<!-- Main grid -->
+<div class="grid">
+    <!-- Agents -->
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+            <h2>Agents</h2>
+            <button class="btn" onclick="showCreateAgent()">+ Add</button>
+        </div>
+        <div id="agents-list"><div class="empty">No agents yet. Create a FIRM first.</div></div>
+    </div>
+
+    <!-- Task execution -->
+    <div class="card">
+        <h2>Execute Task</h2>
+        <div class="form-group">
+            <label>Agent</label>
+            <select id="task-agent"><option value="">Select an agent</option></select>
+        </div>
+        <div class="form-group">
+            <label>Task</label>
+            <textarea id="task-input" placeholder="Describe the task for the agent..."></textarea>
+        </div>
+        <button class="btn" onclick="executeTask()" id="exec-btn">Execute ▶</button>
+        <div id="exec-result" style="margin-top:0.75rem;"></div>
+    </div>
+
+    <!-- Recent tasks -->
+    <div class="card">
+        <h2>Recent Tasks</h2>
+        <div id="tasks-list"><div class="empty">No tasks executed yet.</div></div>
+    </div>
+
+    <!-- Ledger -->
+    <div class="card">
+        <h2>Ledger</h2>
+        <div id="ledger"><div class="empty">Ledger empty.</div></div>
+    </div>
+
+    <!-- Event log -->
+    <div class="card full-width">
+        <h2>Live Events</h2>
+        <div id="log"><div class="empty">Waiting for events...</div></div>
+    </div>
+</div>
+
+<!-- Modal: Create FIRM -->
+<div class="modal-overlay" id="modal-firm">
+    <div class="modal">
+        <h3>Create FIRM Organization</h3>
+        <div class="form-group"><label>Name</label><input id="firm-name" placeholder="my-startup"></div>
+        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+            <button class="btn" onclick="createFirm()">Create</button>
+            <button class="btn secondary" onclick="closeModal('modal-firm')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Create Agent -->
+<div class="modal-overlay" id="modal-agent">
+    <div class="modal">
+        <h3>Add LLM Agent</h3>
+        <div class="form-group"><label>Name</label><input id="agent-name" placeholder="dev-1"></div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>Provider</label>
+                <select id="agent-provider">
+                    <option value="claude">Claude (Anthropic)</option>
+                    <option value="gpt">GPT (OpenAI)</option>
+                    <option value="mistral">Mistral</option>
+                    <option value="copilot">Copilot (GitHub)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Authority</label>
+                <input type="number" id="agent-authority" value="0.5" min="0" max="1" step="0.1">
+            </div>
+        </div>
+        <div class="form-group"><label>API Key (optional)</label><input id="agent-key" type="password" placeholder="Uses env var if blank"></div>
+        <div class="form-group"><label>Roles (comma-separated)</label><input id="agent-roles" placeholder="developer, reviewer"></div>
+        <div style="display:flex; gap:0.5rem; margin-top:1rem;">
+            <button class="btn" onclick="createAgent()">Add Agent</button>
+            <button class="btn secondary" onclick="closeModal('modal-agent')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const API = '';  // same origin
+
+// ─── WebSocket ───
+let ws = null;
+function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}/ws/events`);
+    ws.onopen = () => {
+        document.getElementById('ws-status').innerHTML = '<span class="dot green"></span> Connected';
+    };
+    ws.onclose = () => {
+        document.getElementById('ws-status').innerHTML = '<span class="dot red"></span> Disconnected';
+        setTimeout(connectWS, 3000);
+    };
+    ws.onmessage = (e) => {
+        try {
+            const event = JSON.parse(e.data);
+            logEvent(event);
+        } catch(err) {}
+    };
+}
+
+function logEvent(event) {
+    const log = document.getElementById('log');
+    if (log.querySelector('.empty')) log.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = 'entry';
+    const time = new Date().toLocaleTimeString();
+    const name = event.name || event.type || 'event';
+    div.innerHTML = `<span style="color:var(--muted)">${time}</span> <span style="color:var(--accent)">${name}</span> ${JSON.stringify(event.data || event).substring(0, 120)}`;
+    log.prepend(div);
+    while (log.children.length > 100) log.removeChild(log.lastChild);
+}
+
+// ─── API calls ───
+async function api(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const resp = await fetch(API + path, opts);
+    if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail || JSON.stringify(err));
+    }
+    return resp.json();
+}
+
+// ─── FIRM ───
+function showCreateFirm() { document.getElementById('modal-firm').classList.add('active'); }
+function showCreateAgent() { document.getElementById('modal-agent').classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+async function createFirm() {
+    const name = document.getElementById('firm-name').value.trim();
+    if (!name) return;
+    try {
+        await api('POST', '/firm', { name });
+        closeModal('modal-firm');
+        refreshAll();
+    } catch(e) { alert(e.message); }
+}
+
+async function createAgent() {
+    const name = document.getElementById('agent-name').value.trim();
+    const provider = document.getElementById('agent-provider').value;
+    const authority = parseFloat(document.getElementById('agent-authority').value);
+    const key = document.getElementById('agent-key').value.trim() || undefined;
+    const roles = document.getElementById('agent-roles').value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!name) return;
+    try {
+        await api('POST', '/agents', { name, provider, authority, api_key: key, roles });
+        closeModal('modal-agent');
+        refreshAll();
+    } catch(e) { alert(e.message); }
+}
+
+// ─── Refresh ───
+async function refreshAll() {
+    try { await refreshAgents(); } catch(e) {}
+    try { await refreshTasks(); } catch(e) {}
+    try { await refreshLedger(); } catch(e) {}
+    try { await refreshMetrics(); } catch(e) {}
+}
+
+function authorityColor(a) {
+    if (a >= 0.8) return 'var(--green)';
+    if (a >= 0.5) return 'var(--blue)';
+    if (a >= 0.3) return 'var(--amber)';
+    return 'var(--red)';
+}
+
+async function refreshAgents() {
+    const data = await api('GET', '/agents');
+    const list = document.getElementById('agents-list');
+    const select = document.getElementById('task-agent');
+    if (!data.agents.length) {
+        list.innerHTML = '<div class="empty">No agents yet.</div>';
+        return;
+    }
+    select.innerHTML = '<option value="">Select an agent</option>';
+    list.innerHTML = '';
+    let totalAuth = 0;
+    for (const a of data.agents) {
+        totalAuth += a.authority;
+        const div = document.createElement('div');
+        div.className = 'agent-card';
+        const hasLLM = a.llm ? `<span class="badge running">${a.llm.provider}/${a.llm.model.split('/').pop().split('-')[0]}</span>` : '';
+        div.innerHTML = `
+            <div>
+                <div class="agent-name">${a.name} ${hasLLM}</div>
+                <div class="agent-meta">${a.roles.join(', ') || 'no role'} · ${a.credits.toFixed(0)} credits</div>
+                <div class="authority-bar"><div class="fill" style="width:${a.authority*100}%; background:${authorityColor(a.authority)}"></div></div>
+            </div>
+            <div style="text-align:right">
+                <div style="font-size:1.2rem; font-weight:700;">${(a.authority*100).toFixed(1)}%</div>
+                <div class="agent-meta">${a.status}</div>
+            </div>
+        `;
+        list.appendChild(div);
+        if (a.llm) {
+            const opt = document.createElement('option');
+            opt.value = a.id;
+            opt.textContent = `${a.name} (${a.llm.provider})`;
+            select.appendChild(opt);
+        }
+    }
+    document.getElementById('stat-agents').textContent = data.agents.length;
+    document.getElementById('stat-authority').textContent = ((totalAuth / data.agents.length) * 100).toFixed(1) + '%';
+}
+
+async function refreshTasks() {
+    const data = await api('GET', '/tasks?limit=20');
+    const list = document.getElementById('tasks-list');
+    if (!data.results.length) {
+        list.innerHTML = '<div class="empty">No tasks executed yet.</div>';
+        return;
+    }
+    list.innerHTML = '';
+    document.getElementById('stat-tasks').textContent = data.results.length;
+    let totalTokens = 0, totalCost = 0;
+    for (const r of data.results.reverse()) {
+        totalTokens += (r.input_tokens || 0) + (r.output_tokens || 0);
+        totalCost += r.cost_usd || 0;
+        const div = document.createElement('div');
+        div.className = 'task-entry';
+        const badge = r.status === 'completed' ? 'success' : 'failure';
+        div.innerHTML = `
+            <div><span class="badge ${badge}">${r.status}</span> <strong>${r.agent_name || '?'}</strong></div>
+            <div style="margin-top:2px">${(r.output || r.error || '').substring(0, 150)}</div>
+            <div class="task-time">${r.total_iterations} iterations · ${r.tool_executions} tool calls · ${(r.input_tokens||0)+(r.output_tokens||0)} tokens · $${(r.cost_usd||0).toFixed(4)}</div>
+        `;
+        list.appendChild(div);
+    }
+    document.getElementById('stat-tokens').textContent = totalTokens.toLocaleString();
+    document.getElementById('stat-cost').textContent = '$' + totalCost.toFixed(4);
+}
+
+async function refreshLedger() {
+    const data = await api('GET', '/ledger?limit=20');
+    const list = document.getElementById('ledger');
+    if (!data.entries.length) {
+        list.innerHTML = '<div class="empty">Ledger empty.</div>';
+        return;
+    }
+    list.innerHTML = '';
+    for (const e of data.entries.reverse()) {
+        const div = document.createElement('div');
+        div.className = 'ledger-entry';
+        div.innerHTML = `<span style="color:var(--muted)">${e.agent_id}</span> ${e.description.substring(0, 80)}`;
+        list.appendChild(div);
+    }
+}
+
+async function refreshMetrics() {
+    // Uses the /health endpoint for quick stats
+    try {
+        const data = await api('GET', '/health');
+        if (!data.firm_active) {
+            document.getElementById('stat-agents').textContent = '—';
+        }
+    } catch(e) {}
+}
+
+// ─── Execute task ───
+async function executeTask() {
+    const agentId = document.getElementById('task-agent').value;
+    const task = document.getElementById('task-input').value.trim();
+    if (!agentId || !task) { alert('Select an agent and describe a task.'); return; }
+    const btn = document.getElementById('exec-btn');
+    const result = document.getElementById('exec-result');
+    btn.disabled = true;
+    btn.textContent = 'Executing...';
+    result.innerHTML = '<div style="color:var(--muted)">⏳ Agent working...</div>';
+    try {
+        const data = await api('POST', `/agents/${agentId}/execute`, { task });
+        const badge = data.status === 'completed' ? 'success' : 'failure';
+        result.innerHTML = `
+            <div><span class="badge ${badge}">${data.status}</span></div>
+            <div style="margin-top:0.5rem; font-size:0.85rem; white-space:pre-wrap;">${(data.output || data.error || '').substring(0, 1000)}</div>
+            <div class="task-time" style="margin-top:0.5rem">${data.total_iterations} iterations · ${data.tool_executions} tools · $${(data.cost_usd||0).toFixed(4)}</div>
+        `;
+        refreshAll();
+    } catch(e) {
+        result.innerHTML = `<div style="color:var(--red)">Error: ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Execute ▶';
+    }
+}
+
+// ─── Init ───
+document.addEventListener('DOMContentLoaded', () => {
+    connectWS();
+    refreshAll();
+    setInterval(refreshAll, 10000);
+});
+</script>
+</body>
+</html>
