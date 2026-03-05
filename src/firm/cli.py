@@ -19,6 +19,11 @@ Usage:
     firm amend <agent> <type> <text>              Propose a constitutional amendment
     firm audit                 Run a full audit
     firm repl                  Interactive REPL mode
+    firm bounty agents         List BountyHunter agents
+    firm bounty init <scope.yaml>     Initialise a bounty campaign
+    firm bounty scope <scope.yaml>    Display programme scope
+    firm bounty campaign run --scope-file <f>  Run a campaign
+    firm bounty cvss <vector>         Calculate CVSS score
 """
 
 from __future__ import annotations
@@ -441,6 +446,113 @@ def _repl_help() -> None:
     )
 
 
+# ── Bounty subcommand handlers ───────────────────────────────────────────────
+
+
+def cmd_bounty_agents(args: argparse.Namespace) -> None:
+    """List the 8 BountyHunter agents."""
+    from firm.bounty.factory import BOUNTY_AGENTS
+
+    print(f"{'Name':<18} {'Model':<30} {'Authority':>10}")
+    print("-" * 60)
+    for a in BOUNTY_AGENTS:
+        print(f"{a.name:<18} {a.model:<30} {a.initial_authority:>10.2f}")
+    print(f"\n{len(BOUNTY_AGENTS)} agents total")
+
+
+def cmd_bounty_init(args: argparse.Namespace) -> None:
+    """Initialise a bounty campaign from a scope YAML file."""
+    from firm.bounty.scope import TargetScope
+    from firm.bounty.factory import create_bounty_firm
+
+    scope_path = Path(args.scope_file)
+    if not scope_path.exists():
+        print(f"Error: scope file not found: {scope_path}", file=sys.stderr)
+        sys.exit(1)
+
+    scope = TargetScope.from_yaml(str(scope_path))
+    ctx = create_bounty_firm(
+        scope,
+        rate_limit=args.rate_limit,
+        rate_burst=args.rate_burst,
+    )
+    print(f"BountyFirm initialised for programme: {scope.programme_handle}")
+    print(f"  In-scope assets:  {len(scope.in_scope)}")
+    print(f"  Out-of-scope:     {len(scope.out_of_scope)}")
+    print(f"  Agents:           {len(ctx['agents'])}")
+    print(f"  Tools:            {len(ctx['tools'])}")
+    print(f"  Rate limit:       {args.rate_limit} req/s (burst {args.rate_burst})")
+
+
+def cmd_bounty_scope(args: argparse.Namespace) -> None:
+    """Display scope from a YAML file."""
+    from firm.bounty.scope import TargetScope
+
+    scope_path = Path(args.scope_file)
+    if not scope_path.exists():
+        print(f"Error: scope file not found: {scope_path}", file=sys.stderr)
+        sys.exit(1)
+
+    scope = TargetScope.from_yaml(str(scope_path))
+    print(f"Programme: {scope.programme_handle}")
+    print(f"\n  In-scope ({len(scope.in_scope)}):")
+    for a in scope.in_scope:
+        bounty_icon = "$" if a.eligible_for_bounty else " "
+        print(f"    {bounty_icon} [{a.asset_type.value:<12}] {a.identifier} (max: {a.max_severity})")
+    if scope.out_of_scope:
+        print(f"\n  Out-of-scope ({len(scope.out_of_scope)}):")
+        for a in scope.out_of_scope:
+            print(f"    x [{a.asset_type.value:<12}] {a.identifier}")
+
+
+def cmd_bounty_campaign(args: argparse.Namespace) -> None:
+    """Show campaign status or run a campaign."""
+    from firm.bounty.campaign import Campaign
+    from firm.bounty.scope import TargetScope
+    from firm.bounty.factory import create_bounty_firm
+
+    if args.bounty_action == "status":
+        c = Campaign(programme_handle=args.handle or "unknown")
+        print(f"Campaign: {c.programme_handle}")
+        print(f"  Phase:    {c.phase.value}")
+        print(f"  Findings: {c.stats.total_findings} total, {c.stats.unique_findings} unique")
+        print(f"  Bounty:   ${c.stats.total_bounty_usd:.2f}")
+    elif args.bounty_action == "run":
+        if not args.scope_file:
+            print("Error: --scope-file required for 'run'", file=sys.stderr)
+            sys.exit(1)
+        scope = TargetScope.from_yaml(args.scope_file)
+        ctx = create_bounty_firm(scope)
+        campaign = Campaign(
+            programme_handle=scope.programme_handle,
+            max_duration_hours=args.max_hours,
+            max_findings=args.max_findings,
+        )
+        campaign.wire(ctx["db"], ctx["dedup"], ctx["triage"])
+        campaign.start()
+        print(f"Campaign started: {scope.programme_handle}")
+        print(f"  Phase:        {campaign.phase.value}")
+        print(f"  Max duration: {args.max_hours}h")
+        print(f"  Max findings: {args.max_findings}")
+        print("\n  Run `firm bounty campaign status` to monitor progress.")
+
+
+def cmd_bounty_cvss(args: argparse.Namespace) -> None:
+    """Calculate CVSS score from a vector string."""
+    from firm.bounty.vulnerability import CVSSVector
+
+    try:
+        cvss = CVSSVector.from_string(args.vector)
+    except (ValueError, KeyError) as e:
+        print(f"Error: invalid CVSS vector: {e}", file=sys.stderr)
+        sys.exit(1)
+    score = cvss.base_score
+    severity = cvss.severity()
+    print(f"Vector:   {args.vector}")
+    print(f"Score:    {score:.1f}")
+    print(f"Severity: {severity.value}")
+
+
 # ── Argument parser ──────────────────────────────────────────────────────────
 
 
@@ -570,6 +682,30 @@ def build_parser() -> argparse.ArgumentParser:
     # repl
     sub.add_parser("repl", help="Interactive REPL mode")
 
+    # bounty
+    p_bounty = sub.add_parser("bounty", help="Bug bounty hunting")
+    bounty_sub = p_bounty.add_subparsers(dest="bounty_cmd")
+
+    bounty_sub.add_parser("agents", help="List BountyHunter agents")
+
+    p_binit = bounty_sub.add_parser("init", help="Initialise a bounty campaign")
+    p_binit.add_argument("scope_file", help="Path to scope YAML file")
+    p_binit.add_argument("--rate-limit", type=float, default=10.0, help="Requests/sec")
+    p_binit.add_argument("--rate-burst", type=int, default=20, help="Burst size")
+
+    p_bscope = bounty_sub.add_parser("scope", help="Display programme scope")
+    p_bscope.add_argument("scope_file", help="Path to scope YAML file")
+
+    p_bcampaign = bounty_sub.add_parser("campaign", help="Campaign management")
+    p_bcampaign.add_argument("bounty_action", choices=["status", "run"], help="Action")
+    p_bcampaign.add_argument("--handle", default="", help="Programme handle")
+    p_bcampaign.add_argument("--scope-file", default="", help="Scope YAML (required for run)")
+    p_bcampaign.add_argument("--max-hours", type=float, default=4.0, help="Max duration")
+    p_bcampaign.add_argument("--max-findings", type=int, default=100, help="Max findings")
+
+    p_bcvss = bounty_sub.add_parser("cvss", help="Calculate CVSS score")
+    p_bcvss.add_argument("vector", help="CVSS v3.1 vector string")
+
     return parser
 
 
@@ -653,6 +789,19 @@ def main(argv: list[str] | None = None) -> None:
             cmd_market_bid(args)
         else:
             parser.parse_args(["market", "--help"])
+    elif args.command == "bounty":
+        if args.bounty_cmd == "agents":
+            cmd_bounty_agents(args)
+        elif args.bounty_cmd == "init":
+            cmd_bounty_init(args)
+        elif args.bounty_cmd == "scope":
+            cmd_bounty_scope(args)
+        elif args.bounty_cmd == "campaign":
+            cmd_bounty_campaign(args)
+        elif args.bounty_cmd == "cvss":
+            cmd_bounty_cvss(args)
+        else:
+            parser.parse_args(["bounty", "--help"])
     elif args.command in _DISPATCH:
         _DISPATCH[args.command](args)
     else:
