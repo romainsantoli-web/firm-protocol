@@ -497,9 +497,13 @@ class GeminiProvider(GPTProvider):
     # Fallback chain: newest → oldest free flash models (non-thinking only —
     # thinking models like gemini-2.5+ require thought_signature in tool calls)
     FALLBACK_MODELS: list[str] = [
-        "models/gemini-3-flash-preview",
-        "models/gemini-2.0-flash",
-        "models/gemini-2.0-flash-lite",
+        "models/gemini-3-flash-preview",    # Gemini 3 — newest, free preview
+        "models/gemini-flash-latest",        # latest stable flash alias
+        "models/gemini-2.0-flash",           # 2.0 flash — stable free tier
+        "models/gemini-2.0-flash-001",       # 2.0 flash pinned version
+        "models/gemini-flash-lite-latest",   # latest lite alias
+        "models/gemini-2.0-flash-lite",      # 2.0 flash lite — most generous free quota
+        "models/gemini-2.0-flash-lite-001",  # 2.0 flash lite pinned version
     ]
 
     def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
