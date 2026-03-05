@@ -535,6 +535,122 @@ def _make_python_tools(working_dir: Path, timeout: int = 30) -> list[Tool]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Built-in tools: FIRM Prediction Markets
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_prediction_tools() -> list[Tool]:
+    """Create prediction market tools that operate on a Firm instance.
+
+    These tools are stubs — the actual execution is handled by the runtime
+    when the Firm instance is provided at agent creation time (see agent.py).
+    The runtime replaces the execute functions with bound methods.
+    """
+
+    def firm_predict(
+        market_id: str,
+        side: str,
+        stake: float,
+        probability: float,
+    ) -> ToolResult:
+        return ToolResult(
+            success=False,
+            output="",
+            error="firm_predict requires a Firm runtime context",
+        )
+
+    def firm_create_market(
+        question: str,
+        category: str = "general",
+        deadline_hours: float = 24.0,
+        description: str = "",
+    ) -> ToolResult:
+        return ToolResult(
+            success=False,
+            output="",
+            error="firm_create_market requires a Firm runtime context",
+        )
+
+    def firm_view_market(market_id: str = "", category: str = "") -> ToolResult:
+        return ToolResult(
+            success=False,
+            output="",
+            error="firm_view_market requires a Firm runtime context",
+        )
+
+    return [
+        Tool(
+            name="firm_predict",
+            description=(
+                "Place a prediction on a market. Wager credits on YES/NO "
+                "with a stated probability. Correct contrarian predictions "
+                "earn outsized rewards; wrong predictions lose the stake."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "market_id": {"type": "string", "description": "ID of the prediction market."},
+                    "side": {"type": "string", "enum": ["yes", "no"], "description": "Bet YES or NO."},
+                    "stake": {"type": "number", "description": "Credits to wager (1-1000)."},
+                    "probability": {
+                        "type": "number",
+                        "description": "Your belief probability [0.01-0.99].",
+                    },
+                },
+                "required": ["market_id", "side", "stake", "probability"],
+            },
+            execute=lambda market_id, side, stake, probability, **_: firm_predict(
+                market_id, side, stake, probability,
+            ),
+        ),
+        Tool(
+            name="firm_create_market",
+            description=(
+                "Create a prediction market. Pose a yes/no question for "
+                "agents to bet on. The market aggregates √authority-weighted "
+                "beliefs into a probability estimate."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "Yes/no question to predict."},
+                    "category": {"type": "string", "description": "Market category.", "default": "general"},
+                    "deadline_hours": {
+                        "type": "number",
+                        "description": "Hours until market closes.",
+                        "default": 24.0,
+                    },
+                    "description": {"type": "string", "description": "Context for the question.", "default": ""},
+                },
+                "required": ["question"],
+            },
+            execute=lambda question, category="general", deadline_hours=24.0,
+                    description="", **_: firm_create_market(
+                question, category, deadline_hours, description,
+            ),
+        ),
+        Tool(
+            name="firm_view_market",
+            description=(
+                "View prediction markets. Shows market probability, positions, "
+                "stakes, and leaderboard. Pass no arguments to list all open "
+                "markets, or a market_id for details."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "market_id": {"type": "string", "description": "Market ID for detail view.", "default": ""},
+                    "category": {"type": "string", "description": "Filter by category.", "default": ""},
+                },
+                "required": [],
+            },
+            execute=lambda market_id="", category="", **_: firm_view_market(
+                market_id, category,
+            ),
+        ),
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Toolkit factory
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -562,6 +678,7 @@ def create_builtin_toolkit(
         + _make_file_tools(wd)
         + _make_http_tools(timeout)
         + _make_python_tools(wd, timeout)
+        + _make_prediction_tools()
     )
 
     for tool in all_tools:
@@ -578,4 +695,5 @@ BUILTIN_TOOLS = [
     "file_read", "file_write", "file_list", "file_search",
     "http_get", "http_post",
     "python_run", "python_test",
+    "firm_predict", "firm_create_market", "firm_view_market",
 ]

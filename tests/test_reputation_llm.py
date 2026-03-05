@@ -58,8 +58,8 @@ def test_import_attestation():
     assert imported_reputation.agent_id == agent_id
     assert imported_reputation.source_firm == source_firm_id
     assert imported_reputation.original_authority == 0.8
-    assert imported_reputation.discount_factor == 0.55  # Default discount factor
-    assert imported_reputation.effective_authority == 0.44  # 0.8 * 0.55
+    assert imported_reputation.discount_factor == 0.4  # 0.1 + (0.7-0.1)*0.5
+    assert imported_reputation.effective_authority == pytest.approx(0.3, abs=0.01)  # 0.8 * 0.4 (capped)
     assert len(bridge._received) == 1
     assert len(bridge._imports) == 1
 
