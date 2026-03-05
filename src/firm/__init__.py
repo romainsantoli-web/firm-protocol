@@ -40,6 +40,9 @@ from firm.core.reputation import (
 from firm.core.roles import RoleEngine, RoleDefinition, RoleAssignment
 from firm.core.spawn import SpawnEngine, SpawnEvent
 from firm.core.types import AgentId, FirmId, Severity
+from firm.core.events import EventBus, Event
+from firm.core.plugins import PluginManager, FirmPlugin
+from firm.core.serialization import save_firm, load_firm, snapshot, diff_snapshots
 
 __all__ = [
     "Agent",
@@ -51,10 +54,13 @@ __all__ = [
     "AuditReport",
     "AuthorityEngine",
     "ConstitutionalAgent",
+    "Event",
+    "EventBus",
     "EvolutionEngine",
     "EvolutionProposal",
     "FederationEngine",
     "FederationMessage",
+    "FirmPlugin",
     "GovernanceEngine",
     "HumanOverride",
     "ImportedReputation",
@@ -69,6 +75,7 @@ __all__ = [
     "OverrideEvent",
     "ParameterChange",
     "PeerFirm",
+    "PluginManager",
     "Proposal",
     "ReputationAttestation",
     "ReputationBridge",
@@ -83,4 +90,8 @@ __all__ = [
     "AgentId",
     "FirmId",
     "Severity",
+    "save_firm",
+    "load_firm",
+    "snapshot",
+    "diff_snapshots",
 ]

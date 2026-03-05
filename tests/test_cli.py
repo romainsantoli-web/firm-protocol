@@ -211,6 +211,104 @@ class TestCLIMarket:
         out2 = capsys.readouterr().out
         assert "Task" in out2 or "task" in out2 or "posted" in out2
 
+    def test_market_bid(self, capsys):
+        main(["init", "TestFirm"])
+        capsys.readouterr()
+        main(["agent", "add", "Poster", "--authority", "0.7"])
+        out = capsys.readouterr().out
+        poster_id = _extract_agent_id(out)
+
+        main(["agent", "add", "Bidder", "--authority", "0.6"])
+        out2 = capsys.readouterr().out
+        bidder_id = _extract_agent_id(out2)
+
+        main(["market", "post", poster_id, "Build feature Y", "25.0"])
+        out3 = capsys.readouterr().out
+        task_id = _extract_id_from_output(out3)
+
+        main(["market", "bid", task_id, bidder_id, "20.0"])
+        out4 = capsys.readouterr().out
+        assert "Bid" in out4 or "bid" in out4
+
+
+class TestCLIFinalize:
+    """Test proposal finalize."""
+
+    def test_finalize(self, capsys):
+        main(["init", "TestFirm"])
+        capsys.readouterr()
+        main(["agent", "add", "CEO", "--authority", "0.9"])
+        out = capsys.readouterr().out
+        agent_id = _extract_agent_id(out)
+
+        main(["propose", agent_id, "New rule", "A governance rule"])
+        out2 = capsys.readouterr().out
+        proposal_id = _extract_id_from_output(out2)
+
+        # Must go through 3 simulation phases then open voting
+        firm = cli_module._firm
+        firm.simulate_proposal(proposal_id, success=True)  # DRAFT → SIM1
+        firm.simulate_proposal(proposal_id, success=True)  # SIM1 → STRESS
+        firm.simulate_proposal(proposal_id, success=True)  # STRESS → SIM2
+        proposal = firm.governance.get_proposal(proposal_id)
+        firm.governance.open_voting(proposal)  # SIM2 → VOTING
+
+        main(["finalize", proposal_id])
+        out3 = capsys.readouterr().out
+        assert "Proposal" in out3 or proposal_id in out3
+
+
+class TestCLIEvolve:
+    """Test evolution propose/vote/apply."""
+
+    def test_evolve_propose(self, capsys):
+        main(["init", "TestFirm"])
+        capsys.readouterr()
+        main(["agent", "add", "CTO", "--authority", "0.9"])
+        out = capsys.readouterr().out
+        agent_id = _extract_agent_id(out)
+
+        main(["evolve", "propose", agent_id, "authority.learning_rate", "0.08"])
+        out2 = capsys.readouterr().out
+        assert "Evolution" in out2 or "proposal" in out2.lower()
+
+    def test_evolve_propose_simple_param(self, capsys):
+        """Test param without '.' — defaults to authority category."""
+        main(["init", "TestFirm"])
+        capsys.readouterr()
+        main(["agent", "add", "CTO", "--authority", "0.9"])
+        out = capsys.readouterr().out
+        agent_id = _extract_agent_id(out)
+
+        main(["evolve", "propose", agent_id, "learning_rate", "0.08"])
+        out2 = capsys.readouterr().out
+        assert "Evolution" in out2 or "proposal" in out2.lower()
+
+
+class TestCLIAmend:
+    """Test constitutional amendment."""
+
+    def test_amend_add_keywords(self, capsys):
+        main(["init", "TestFirm"])
+        capsys.readouterr()
+        main(["agent", "add", "CEO", "--authority", "0.9"])
+        out = capsys.readouterr().out
+        agent_id = _extract_agent_id(out)
+
+        main(["amend", agent_id, "add_keywords", "INV-1:fraud,scam"])
+        out2 = capsys.readouterr().out
+        assert "Amendment" in out2 or "amendment" in out2
+
+
+class TestCLIMemoryRecallEmpty:
+    """Test memory recall with no matches."""
+
+    def test_memory_recall_no_results(self, capsys):
+        main(["init", "TestFirm"])
+        main(["memory", "recall", "nonexistent-tag"])
+        out = capsys.readouterr().out
+        assert "No memories" in out
+
 
 class TestCLINoFirm:
     """Test commands fail gracefully when no firm is initialized."""
@@ -226,6 +324,144 @@ class TestCLINoFirm:
     def test_audit_no_firm(self):
         with pytest.raises(SystemExit):
             main(["audit"])
+
+
+class TestCLIRepl:
+    """Test interactive REPL mode."""
+
+    def test_repl_quit(self, capsys, monkeypatch):
+        """REPL should exit on 'quit'."""
+        inputs = iter(["quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Goodbye" in out
+
+    def test_repl_add_and_status(self, capsys, monkeypatch):
+        """REPL should handle add and status commands."""
+        inputs = iter(["add TestAgent 0.6", "status", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "TestAgent" in out
+        assert "ReplFirm" in out
+
+    def test_repl_help(self, capsys, monkeypatch):
+        """REPL help command."""
+        inputs = iter(["help", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Commands:" in out
+
+    def test_repl_agents(self, capsys, monkeypatch):
+        """REPL agents command."""
+        inputs = iter(["add Worker", "agents", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Worker" in out
+
+    def test_repl_unknown_command(self, capsys, monkeypatch):
+        """REPL should handle unknown commands."""
+        inputs = iter(["xyzzy", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Unknown command" in out
+
+    def test_repl_empty_line(self, capsys, monkeypatch):
+        """REPL should skip empty lines."""
+        inputs = iter(["", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Goodbye" in out
+
+    def test_repl_eof(self, capsys, monkeypatch):
+        """REPL should handle EOF (Ctrl-D)."""
+        def raise_eof(_=""):
+            raise EOFError()
+        monkeypatch.setattr("builtins.input", raise_eof)
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Goodbye" in out
+
+    def test_repl_action_command(self, capsys, monkeypatch):
+        """REPL action command."""
+        inputs = iter(["add Worker 0.5", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        # Now test action in a second REPL session
+        agent = cli_module._firm.get_agents()[0]
+        inputs2 = iter([f"action {agent.id} ok did-work", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs2))
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "authority" in out.lower()
+
+    def test_repl_ledger_command(self, capsys, monkeypatch):
+        """REPL ledger command."""
+        inputs = iter(["ledger", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "FIRM" in out or "decision" in out.lower() or "created" in out.lower()
+
+    def test_repl_params_command(self, capsys, monkeypatch):
+        """REPL params command."""
+        inputs = iter(["params", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "learning_rate" in out or "{" in out
+
+    def test_repl_auto_init(self, capsys, monkeypatch):
+        """REPL should auto-create a firm if none exists."""
+        inputs = iter(["test-firm", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "created" in out.lower() or "test-firm" in out.lower()
+
+    def test_repl_propose_vote(self, capsys, monkeypatch):
+        """REPL propose and vote commands."""
+        inputs = iter(["add CEO 0.9", "add Dev 0.6", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        capsys.readouterr()
+
+        agents = cli_module._firm.get_agents()
+        ceo = [a for a in agents if a.name == "CEO"][0]
+        dev = [a for a in agents if a.name == "Dev"][0]
+        inputs2 = iter([
+            f"propose {ceo.id} NewRule A new governance rule",
+            "quit",
+        ])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs2))
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Proposal" in out or "proposal" in out.lower()
+
+    def test_repl_error_handling(self, capsys, monkeypatch):
+        """REPL should catch and display errors gracefully."""
+        inputs = iter(["action nonexistent ok bad", "quit"])
+        monkeypatch.setattr("builtins.input", lambda _="": next(inputs))
+        main(["init", "ReplFirm"])
+        main(["repl"])
+        out = capsys.readouterr().out
+        assert "Error" in out
 
 
 class TestBuildParser:
@@ -284,3 +520,16 @@ def _extract_agent_id(output: str) -> str:
             end = line.index(",", start) if "," in line[start:] else line.index(")", start)
             return line[start:end]
     raise ValueError(f"Could not extract agent ID from output: {output!r}")
+
+
+def _extract_id_from_output(output: str) -> str:
+    """Extract an ID from output like 'Proposal created: abc123' or 'Market task posted: xyz'."""
+    for line in output.split("\n"):
+        if ":" in line:
+            # Look for ID-like strings after colon
+            parts = line.split(":")
+            for part in parts[1:]:
+                candidate = part.strip().split()[0] if part.strip() else ""
+                if candidate and len(candidate) > 4:
+                    return candidate
+    raise ValueError(f"Could not extract ID from output: {output!r}")

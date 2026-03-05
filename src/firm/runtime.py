@@ -60,6 +60,8 @@ from firm.core.reputation import (
     ReputationAttestation,
     ImportedReputation,
 )
+from firm.core.events import EventBus, Event
+from firm.core.plugins import PluginManager, FirmPlugin
 from firm.core.roles import RoleEngine, RoleAssignment, RoleDefinition
 from firm.core.spawn import SpawnEngine
 from firm.core.types import (
@@ -125,6 +127,10 @@ class Firm:
         self.market = MarketEngine()
         self.meta = MetaConstitutional(self.constitution)
 
+        # S5 — Event bus & plugin system
+        self.events = EventBus()
+        self.plugins = PluginManager()
+
         # Agent registry
         self._agents: dict[str, Agent] = {}
 
@@ -137,6 +143,29 @@ class Firm:
         )
 
         logger.info("FIRM '%s' created (id=%s)", name, self.id)
+
+        # Emit genesis event
+        self.events.emit("firm.created", {
+            "name": name, "id": self.id,
+        }, source="runtime")
+
+    # ── Serialization shortcuts ──────────────────────────────────────────
+
+    def save(self, path: str | None = None) -> dict[str, Any]:
+        """Save FIRM state to JSON. See firm.core.serialization."""
+        from firm.core.serialization import save_firm
+        return save_firm(self, path)
+
+    @classmethod
+    def load(cls, source: str | dict[str, Any]) -> "Firm":
+        """Load FIRM state from JSON. See firm.core.serialization."""
+        from firm.core.serialization import load_firm
+        return load_firm(source)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Take an in-memory snapshot for comparison."""
+        from firm.core.serialization import snapshot
+        return snapshot(self)
 
     # ── Agent management ─────────────────────────────────────────────────
 
@@ -163,6 +192,10 @@ class Firm:
             authority_at_time=authority,
             outcome="success",
         )
+
+        self.events.emit("agent.added", {
+            "agent_id": agent.id, "name": name, "authority": authority,
+        }, source="runtime")
 
         return agent
 
@@ -245,6 +278,11 @@ class Firm:
 
         # Check if governance needs bootstrap
         self._check_governance_health()
+
+        self.events.emit("action.recorded", {
+            "agent_id": agent_id, "success": success,
+            "authority": agent.authority,
+        }, source="runtime")
 
         return {
             "agent_id": agent_id,
@@ -1224,5 +1262,7 @@ class Firm:
             "evolution": self.evolution.get_stats(),
             "market": self.market.get_stats(),
             "meta_constitutional": self.meta.get_stats(),
+            "events": self.events.get_stats(),
+            "plugins": self.plugins.get_stats(),
             "uptime_seconds": round(time.time() - self.created_at, 1),
         }
