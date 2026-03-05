@@ -25,25 +25,49 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import textwrap
+from pathlib import Path
 from typing import Any
 
-from firm import __version__
+from firm import __version__, save_firm, load_firm
 from firm.runtime import Firm
 from firm.core.types import VoteChoice
 
-# ── Global firm instance for REPL ────────────────────────────────────────────
+# ── State persistence ────────────────────────────────────────────────────────
+
+DEFAULT_STATE_FILE = "firm-state.json"
 
 _firm: Firm | None = None
+_state_path: Path | None = None
 
 
 def _get_firm() -> Firm:
     """Return the global firm instance, or raise."""
     if _firm is None:
-        print("Error: No FIRM loaded. Run 'firm init <name>' first.", file=sys.stderr)
+        print("Error: No FIRM loaded. Run 'firm init <name>' or use --state <file>.", file=sys.stderr)
         sys.exit(1)
     return _firm
+
+
+def _load_state(path: Path) -> bool:
+    """Load FIRM state from a JSON file. Returns True if loaded."""
+    global _firm, _state_path
+    _state_path = path
+    if path.exists():
+        try:
+            _firm = load_firm(str(path))
+            return True
+        except Exception as e:
+            print(f"Warning: failed to load state from {path}: {e}", file=sys.stderr)
+    return False
+
+
+def _save_state() -> None:
+    """Persist current FIRM state to the state file."""
+    if _firm is not None and _state_path is not None:
+        save_firm(_firm, str(_state_path))
 
 
 def _json_out(data: Any) -> None:
@@ -56,9 +80,13 @@ def _json_out(data: Any) -> None:
 
 def cmd_init(args: argparse.Namespace) -> None:
     """Create a new FIRM organization."""
-    global _firm
+    global _firm, _state_path
     _firm = Firm(name=args.name)
+    if _state_path is None:
+        _state_path = Path(DEFAULT_STATE_FILE)
+    _save_state()
     print(f"FIRM '{args.name}' created (id={_firm.id})")
+    print(f"  State saved to: {_state_path}")
 
 
 def cmd_agent_add(args: argparse.Namespace) -> None:
@@ -300,14 +328,19 @@ def cmd_amend(args: argparse.Namespace) -> None:
 
 def cmd_repl(args: argparse.Namespace) -> None:
     """Interactive REPL mode."""
-    global _firm
+    global _firm, _state_path
     print(f"FIRM Protocol v{__version__} — Interactive Mode")
+    if _state_path:
+        print(f"State file: {_state_path}")
     print("Type 'help' for commands, 'quit' to exit.\n")
 
     if _firm is None:
         name = input("Enter FIRM name: ").strip() or "my-firm"
         _firm = Firm(name=name)
-        print(f"FIRM '{name}' created.\n")
+        if _state_path is None:
+            _state_path = Path(DEFAULT_STATE_FILE)
+        _save_state()
+        print(f"FIRM '{name}' created (saved to {_state_path}).\n")
 
     while True:
         try:
@@ -338,18 +371,22 @@ def cmd_repl(args: argparse.Namespace) -> None:
             elif cmd == "add" and len(parts) >= 2:
                 authority = float(parts[2]) if len(parts) >= 3 else 0.5
                 cmd_agent_add(argparse.Namespace(name=parts[1], authority=authority))
+                _save_state()
             elif cmd == "action" and len(parts) >= 3:
                 desc = parts[3] if len(parts) >= 4 else ""
                 cmd_action(
                     argparse.Namespace(agent=parts[1], outcome=parts[2], description=desc)
                 )
+                _save_state()
             elif cmd == "propose" and len(parts) >= 3:
                 desc = parts[3] if len(parts) >= 4 else parts[2]
                 cmd_propose(argparse.Namespace(agent=parts[1], title=parts[2], description=desc))
+                _save_state()
             elif cmd == "vote" and len(parts) >= 4:
                 cmd_vote(
                     argparse.Namespace(proposal=parts[1], agent=parts[2], choice=parts[3])
                 )
+                _save_state()
             elif cmd == "params":
                 _json_out(_firm.get_firm_parameters())
             elif cmd == "ledger":
@@ -358,6 +395,23 @@ def cmd_repl(args: argparse.Namespace) -> None:
                     print(f"  [{e['action']}] {e['agent_id']}: {e['description'][:60]}")
                 if len(entries) > 10:
                     print(f"  ... ({len(entries) - 10} more entries)")
+            elif cmd == "save":
+                path = Path(parts[1]) if len(parts) >= 2 else _state_path
+                if path and _firm:
+                    save_firm(_firm, str(path))
+                    print(f"State saved to {path}")
+                else:
+                    print("No file specified and no state file configured.")
+            elif cmd == "load" and len(parts) >= 2:
+                if _load_state(Path(parts[1])):
+                    print(f"Loaded FIRM '{_firm.name}' from {parts[1]}")
+                else:
+                    print(f"Failed to load from {parts[1]}")
+            elif cmd == "export" and len(parts) >= 2:
+                data = _firm.status()
+                with open(parts[1], "w") as f:
+                    json.dump(data, f, indent=2, default=str)
+                print(f"Status exported to {parts[1]}")
             else:
                 print(f"Unknown command: {line}. Type 'help' for commands.")
         except Exception as e:
@@ -378,6 +432,9 @@ def _repl_help() -> None:
           params                     Show current parameters
           ledger                     Show last 10 ledger entries
           audit                      Run full audit
+          save [file]                Save state (default: current state file)
+          load <file>                Load state from file
+          export <file>              Export status as JSON
           help                       Show this help
           quit                       Exit
         """)
@@ -395,6 +452,11 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--state", "-s",
+        default=os.environ.get("FIRM_STATE", DEFAULT_STATE_FILE),
+        help=f"State file path (default: $FIRM_STATE or {DEFAULT_STATE_FILE})",
+    )
 
     sub = parser.add_subparsers(dest="command", help="Available commands")
 
@@ -526,14 +588,32 @@ _DISPATCH = {
 }
 
 
+# Commands that modify state and need auto-save
+_MUTATING_COMMANDS = {
+    "init", "action", "propose", "vote", "finalize", "amend",
+    "agent", "role", "memory", "evolve", "market",
+}
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
+    global _state_path
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:
         parser.print_help()
         sys.exit(0)
+
+    # Load existing state (unless we're creating a new one or already loaded)
+    state_path = Path(getattr(args, "state", DEFAULT_STATE_FILE))
+    if args.command != "init":
+        if _firm is None:
+            _load_state(state_path)
+        elif _state_path is None:
+            _state_path = state_path
+    else:
+        _state_path = state_path
 
     # Nested subcommand dispatch
     if args.command == "agent":
@@ -578,6 +658,10 @@ def main(argv: list[str] | None = None) -> None:
     else:
         parser.print_help()
         sys.exit(1)
+
+    # Auto-save after mutating commands
+    if args.command in _MUTATING_COMMANDS:
+        _save_state()
 
 
 if __name__ == "__main__":

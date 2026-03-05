@@ -1,0 +1,118 @@
+{
+  "_saved_at": 1772672653.958622,
+  "_version": "1.0.0",
+  "agents": {},
+  "authority_config": {
+    "decay": 0.02,
+    "learning_rate": 0.05
+  },
+  "constitution": {
+    "invariants": [
+      {
+        "description": "The human can always shut it down",
+        "id": "INV-1",
+        "violation_keywords": [
+          "disable kill switch",
+          "remove human control",
+          "prevent shutdown",
+          "override human",
+          "ignore human",
+          "block termination",
+          "disable emergency",
+          "remove safety",
+          "bypass human",
+          "autonomous override"
+        ]
+      },
+      {
+        "description": "The system cannot erase its own capacity to evolve",
+        "id": "INV-2",
+        "violation_keywords": [
+          "freeze governance",
+          "lock protocol",
+          "disable proposals",
+          "prevent evolution",
+          "permanent configuration",
+          "immutable governance",
+          "disable voting",
+          "remove governance",
+          "lock authority",
+          "freeze all"
+        ]
+      }
+    ],
+    "kill_switch_active": false
+  },
+  "created_at": 1772672653.958495,
+  "evolution": {
+    "applied_count": 0,
+    "generation": 0,
+    "parameter_categories": [
+      "authority",
+      "governance",
+      "economy",
+      "spawn",
+      "memory"
+    ],
+    "proposals_by_status": {},
+    "total_proposals": 0
+  },
+  "federation": {
+    "home_firm": "replfirm",
+    "messages": {
+      "total": 0
+    },
+    "peers": {
+      "active": 0,
+      "avg_trust": 0.0,
+      "total": 0
+    },
+    "secondments": {
+      "active": 0,
+      "total": 0
+    }
+  },
+  "id": "replfirm",
+  "ledger": {
+    "entries": [
+      {
+        "action": "decision",
+        "agent_id": "system",
+        "authority_at_time": 0.0,
+        "credit_delta": 0.0,
+        "description": "FIRM 'ReplFirm' created",
+        "entry_hash": "3e9a667bfab18f70a1579d65a03ca80caa0ba87e2e62d697d5e19ee0643886db",
+        "id": "f54c80cc-5a7",
+        "outcome": "success",
+        "previous_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "timestamp": 1772672653.9585018
+      }
+    ],
+    "length": 1
+  },
+  "market": {
+    "categories_with_prices": [],
+    "commons_pool": 0.0,
+    "fee_rate": 0.0,
+    "tasks_by_status": {},
+    "total_bids": 0,
+    "total_settlements": 0,
+    "total_tasks": 0,
+    "total_volume": 0.0
+  },
+  "memory": {
+    "entries": [],
+    "total_entries": 0
+  },
+  "name": "ReplFirm",
+  "reputation": {
+    "active_imports": 0,
+    "agents_with_imports": 0,
+    "home_firm": "replfirm",
+    "issued_attestations": 0,
+    "received_attestations": 0,
+    "total_imported_authority": 0,
+    "total_imports": 0
+  },
+  "roles": []
+}

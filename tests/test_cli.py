@@ -15,11 +15,15 @@ import firm.cli as cli_module
 
 
 @pytest.fixture(autouse=True)
-def reset_global_firm():
-    """Reset the global firm instance between tests."""
+def reset_global_firm(tmp_path):
+    """Reset the global firm instance and state path between tests."""
     cli_module._firm = None
+    # Use a temp state file so tests don't interfere with each other
+    cli_module._state_path = tmp_path / "firm-state.json"
+    cli_module.DEFAULT_STATE_FILE = str(tmp_path / "firm-state.json")
     yield
     cli_module._firm = None
+    cli_module._state_path = None
 
 
 class TestCLIVersion:
