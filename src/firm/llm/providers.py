@@ -32,6 +32,8 @@ class LLMMessage:
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None
     name: str | None = None
+    # Preserved raw API message (e.g. Gemini thinking-model thought_signature)
+    _raw: Any = None
 
 
 @dataclass
@@ -52,6 +54,8 @@ class LLMResponse:
     output_tokens: int = 0
     model: str = ""
     latency_ms: float = 0.0
+    # Raw provider message object — used to preserve Gemini thought_signatures
+    raw_message: Any = None
 
     @property
     def has_tool_calls(self) -> bool:
@@ -263,6 +267,11 @@ class GPTProvider(LLMProvider):
     def _convert_messages(self, messages: list[LLMMessage]) -> list[dict]:
         converted = []
         for msg in messages:
+            # If a raw message was preserved (e.g. Gemini thought_signature),
+            # pass it through verbatim so the API receives it unchanged.
+            if msg._raw is not None:
+                converted.append(msg._raw)
+                continue
             if msg.role == "tool":
                 converted.append({
                     "role": "tool",
@@ -334,6 +343,7 @@ class GPTProvider(LLMProvider):
             output_tokens=usage.completion_tokens if usage else 0,
             model=self.model,
             latency_ms=latency,
+            raw_message=choice.message.model_dump(exclude_none=True) if tool_calls else None,
         )
 
 
@@ -471,6 +481,80 @@ class CopilotProvider(GPTProvider):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Gemini (Google — OpenAI-compatible endpoint)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class GeminiProvider(GPTProvider):
+    """Google Gemini provider via OpenAI-compatible REST endpoint.
+
+    Falls back automatically through free-tier models (newest → oldest)
+    on 429 / RateLimitError.
+    """
+
+    name = "gemini"
+
+    # Fallback chain: newest → oldest free flash models (non-thinking only —
+    # thinking models like gemini-2.5+ require thought_signature in tool calls)
+    FALLBACK_MODELS: list[str] = [
+        "models/gemini-3-flash-preview",
+        "models/gemini-2.0-flash",
+        "models/gemini-2.0-flash-lite",
+    ]
+
+    def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
+        super().__init__(
+            model=model,
+            api_key=api_key or os.environ.get("GEMINI_API_KEY"),
+            base_url=kwargs.pop(
+                "base_url",
+                "https://generativelanguage.googleapis.com/v1beta/openai/",
+            ),
+            **kwargs,
+        )
+
+    def _default_model(self) -> str:
+        return "models/gemini-3-flash-preview"
+
+    def chat(
+        self,
+        messages: list[LLMMessage],
+        tools: list[ToolDefinition] | None = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+    ) -> LLMResponse:
+        """Chat with automatic fallback through free models on rate-limit."""
+        # Build the ordered list: requested model first, then fallbacks
+        candidates = [self.model] + [m for m in self.FALLBACK_MODELS if m != self.model]
+
+        last_exc: Exception | None = None
+        for candidate in candidates:
+            original = self.model
+            self.model = candidate
+            try:
+                response = super().chat(messages, tools=tools, temperature=temperature, max_tokens=max_tokens)
+                if candidate != original:
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "GeminiProvider: fell back to %s (original: %s)", candidate, original
+                    )
+                return response
+            except openai.RateLimitError as e:
+                last_exc = e
+                self.model = original  # restore before next try
+                import logging
+                logging.getLogger(__name__).warning(
+                    "GeminiProvider: rate-limited on %s, trying next fallback…", candidate
+                )
+                continue
+            except Exception:
+                self.model = original
+                raise
+        # All fallbacks exhausted
+        raise last_exc  # type: ignore[misc]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Factory
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -481,6 +565,8 @@ _PROVIDERS: dict[str, type[LLMProvider]] = {
     "mistral": MistralProvider,
     "copilot": CopilotProvider,
     "github": CopilotProvider,
+    "gemini": GeminiProvider,
+    "google": GeminiProvider,
 }
 
 

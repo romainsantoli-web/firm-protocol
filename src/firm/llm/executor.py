@@ -270,11 +270,13 @@ class TaskExecutor:
                     cost_usd=_estimate_cost(self.provider.model, total_input, total_output),
                 )
 
-            # Process tool calls
+            # Process tool calls — preserve raw message for thinking models
+            # (e.g. Gemini thought_signature must be echoed back verbatim)
             messages.append(LLMMessage(
                 role="assistant",
                 content=response.content,
                 tool_calls=response.tool_calls,
+                _raw=response.raw_message,
             ))
 
             for tc in response.tool_calls:
