@@ -612,6 +612,38 @@ The MCP bridge was tested at scale on both **LangGraph** and **LangChain** repos
 
 > Reproduction: `python examples/autogen_security_scan.py` (requires MCP server on port 8012 + `git clone --depth 1 https://github.com/microsoft/autogen.git /tmp/autogen`)
 
+### ✅ External Validation — Security scan on designing-multiagent-systems (219 Python files)
+
+[**designing-multiagent-systems**](https://github.com/victordibia/designing-multiagent-systems) by [**Victor Dibia**](https://github.com/victordibia) (Microsoft Research, AutoGen lead contributor) — companion repo for his book/course on designing multi-agent AI systems. Includes **PicoAgents**, a lightweight agent library.
+
+<table>
+<tr><th>Step</th><th>Result</th><th>Status</th></tr>
+<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
+<tr><td><b>Firm Organization</b></td><td><code>dmas-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
+<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
+<tr><td><b>Targets Scanned</b></td><td><b>4 sub-modules</b> (picoagents, course, examples, research)</td><td>✅</td></tr>
+<tr><td><b>Total Files</b></td><td><b>219 files</b> scanned in ~0.2s</td><td>✅</td></tr>
+<tr><td><b>Total Findings</b></td><td>0 CRITICAL · <b>1 HIGH</b> · 1 MEDIUM — <b>2 total</b></td><td>✅</td></tr>
+</table>
+
+**Breakdown by target:**
+
+| Target | Files | CRIT | HIGH | MED | Total | Verdict |
+|--------|------:|-----:|-----:|----:|------:|---------|
+| PicoAgents (lib) | 105 | 0 | 1 | 0 | 1 | ✅ PASS |
+| Course Samples | 33 | 0 | 0 | 1 | 1 | ✅ PASS |
+| Examples | 77 | 0 | 0 | 0 | 0 | ✅ PASS |
+| Research | 4 | 0 | 0 | 0 | 0 | ✅ PASS |
+| **TOTAL** | **219** | **0** | **1** | **1** | **2** | ✅ |
+
+**Key findings:**
+- **1 HIGH:** String concatenation in `tests/test_orchestrator.py:203`
+- **1 MEDIUM:** Raw SQL call pattern in `course/samples/book_generator/autogen_core/tools.py:35`
+- **Examples + Research: 0 findings** — 81 files scanned with zero issues
+- **0 CRITICAL vulnerabilities** — near-perfect security posture
+
+> Reproduction: `python examples/dmas_security_scan.py` (requires MCP server on port 8012 + `git clone --depth 1 https://github.com/victordibia/designing-multiagent-systems.git /tmp/dmas`)
+
 ---
 
 ## Automatic Security Report Generation
