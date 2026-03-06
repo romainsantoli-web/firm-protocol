@@ -16,7 +16,7 @@ Single-tool `firm_security_scan` at depth 5. Fast (~30s), regex-based pattern ma
 
 | Framework | Files | v1 Findings | v4 Deep | CRITICAL | Report (v1) | Report (v4) |
 |-----------|------:|-------------|---------|----------|-------------|-------------|
-| [crewAI](https://github.com/crewAIInc/crewAI) | 412 | 17 (13H/4M) | **13 (7H/6M)** | 0 | [v1](REPORT-crewai.md) | [**v4 deep**](REPORT-crewai-v4-deep.md) |
+| [crewAI](https://github.com/crewAIInc/crewAI) | 412 | 17 (13H/4M) | **13 (7H/6M)** | 0 | [v1](REPORT-crewai.md) / [scan.py](crewai_security_scan.py) | [**v4 deep**](REPORT-crewai-v4-deep.md) / [scan.py](crewai_v4_deep_scan.py) |
 | [LangGraph + LangChain](https://github.com/langchain-ai) | 2,205 | 42 (33H/9M) | — | 0 | [v1](REPORT-langchain.md) | — |
 | [Microsoft AutoGen](https://github.com/microsoft/autogen) | 355 | 15 (13H/2M) | — | 0 | [v1](REPORT-autogen.md) | — |
 | [designing-multiagent-systems](https://github.com/victordibia/designing-multiagent-systems) | 219 | 2 (1H/1M) | — | 0 | [v1](REPORT-dmas.md) | — |
