@@ -2,8 +2,6 @@
 
 A ``Finding`` captures a single vulnerability discovered during a scan.
 ``FindingsDB`` stores, deduplicates, and queries findings.
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations

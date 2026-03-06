@@ -2,8 +2,6 @@
 
 Provides a simple ``create_security_firm()`` entry point that wires
 all components and returns a ready-to-use context dict.
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations

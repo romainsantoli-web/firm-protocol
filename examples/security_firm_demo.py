@@ -16,8 +16,6 @@ The script will:
 Requirements:
   - Copilot Pro JWT (COPILOT_JWT env var or cached token)
   - MCP server at http://127.0.0.1:8012 (optional but recommended)
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations
@@ -94,7 +92,6 @@ def main(repo_path: str) -> None:
               f"tasks={s['tasks_executed']} success={s['success_rate']:.0%}")
 
     print()
-    print("⚠️ Contenu généré par IA — validation humaine requise avant utilisation.")
 
 
 if __name__ == "__main__":

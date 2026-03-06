@@ -18,8 +18,6 @@ Usage::
     ctx = create_security_firm("/path/to/repo")
     report = ctx["pipeline"].run()
     print(report)
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 __version__ = "0.1.0"

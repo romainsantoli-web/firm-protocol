@@ -7,8 +7,6 @@ Defines 4 specialised agents that scan repositories in parallel:
   - report-synthesizer (gemini-3.1-pro)    — consolidation + final report
 
 All agents use the ``copilot-pro`` provider (zero API cost).
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations

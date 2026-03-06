@@ -2,8 +2,6 @@
 
 10 LLM-callable tools that scan local Git repositories for security issues.
 Each tool returns a string result suitable for LLM consumption.
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations

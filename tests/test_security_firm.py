@@ -2,8 +2,6 @@
 
 Covers: agents, findings, tools, report, pipeline, factory.
 No real LLM calls — all provider interactions are mocked.
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations

@@ -10,8 +10,6 @@ repo-scanner tools + MCP bridge, then runs a multi-phase scan:
 4. **Report** — report-synthesizer generates the final Markdown
 
 Agents communicate via FIRM shared memory (contribute + recall).
-
-⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations
