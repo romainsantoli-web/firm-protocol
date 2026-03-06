@@ -5,7 +5,7 @@
 
 import pytest
 
-from firm.bounty.factory import BOUNTY_AGENTS, create_bounty_firm
+from firm.bounty.factory import BOUNTY_AGENTS, _resolve_model, create_bounty_firm
 from firm.bounty.scope import Asset, AssetType, TargetScope
 
 
@@ -56,3 +56,34 @@ class TestAgentSpecs:
     def test_authority_range(self):
         for agent in BOUNTY_AGENTS:
             assert 0.0 <= agent.initial_authority <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Model resolution
+# ---------------------------------------------------------------------------
+
+class TestResolveModel:
+    def test_default_model_returned_without_env(self, monkeypatch):
+        monkeypatch.delenv("FIRM_HUNT_DIRECTOR_MODEL", raising=False)
+        monkeypatch.delenv("FIRM_DEFAULT_MODEL", raising=False)
+        assert _resolve_model("hunt-director", "claude-default") == "claude-default"
+
+    def test_specific_env_var_overrides_default(self, monkeypatch):
+        monkeypatch.setenv("FIRM_HUNT_DIRECTOR_MODEL", "my-custom-model")
+        monkeypatch.delenv("FIRM_DEFAULT_MODEL", raising=False)
+        assert _resolve_model("hunt-director", "claude-default") == "my-custom-model"
+
+    def test_global_default_env_var(self, monkeypatch):
+        monkeypatch.delenv("FIRM_HUNT_DIRECTOR_MODEL", raising=False)
+        monkeypatch.setenv("FIRM_DEFAULT_MODEL", "gpt-4-turbo")
+        assert _resolve_model("hunt-director", "claude-default") == "gpt-4-turbo"
+
+    def test_specific_env_var_takes_priority_over_global(self, monkeypatch):
+        monkeypatch.setenv("FIRM_RECON_AGENT_MODEL", "specific-model")
+        monkeypatch.setenv("FIRM_DEFAULT_MODEL", "global-model")
+        assert _resolve_model("recon-agent", "fallback") == "specific-model"
+
+    def test_hyphen_to_underscore_conversion(self, monkeypatch):
+        monkeypatch.setenv("FIRM_REPORT_WRITER_MODEL", "report-model")
+        monkeypatch.delenv("FIRM_DEFAULT_MODEL", raising=False)
+        assert _resolve_model("report-writer", "fallback") == "report-model"

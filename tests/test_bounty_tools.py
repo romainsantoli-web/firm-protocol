@@ -6,18 +6,20 @@ CLI tools (all subprocess calls are mocked).
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from firm.bounty.scope import Asset, AssetType, ScopeEnforcer, TargetScope
 from firm.bounty.tools.scanner import (
     RateLimiter,
+    _resolve_ffuf_wordlist,
+    _resolve_httpx_bin,
     make_bounty_tools,
     make_recon_tools,
     make_report_tools,
     make_scanning_tools,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -154,3 +156,76 @@ class TestReportTool:
         )
         assert "# XSS in search" in result
         assert "CWE-79" in result
+
+
+# ---------------------------------------------------------------------------
+# Binary / wordlist resolution
+# ---------------------------------------------------------------------------
+
+class TestResolveHttpxBin:
+    def test_env_var_takes_priority(self, monkeypatch):
+        monkeypatch.setenv("HTTPX_BIN", "/custom/httpx")
+        assert _resolve_httpx_bin() == "/custom/httpx"
+
+    def test_env_var_empty_falls_through(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("HTTPX_BIN", "")
+        # Ensure no tool is found on PATH and Homebrew path does not exist
+        with patch("shutil.which", return_value=None), \
+             patch("firm.bounty.tools.scanner.Path") as mock_path:
+            mock_path.return_value.exists.return_value = False
+            result = _resolve_httpx_bin()
+        assert result == "httpx-toolkit"
+
+    def test_shutil_which_used_when_no_env(self, monkeypatch):
+        monkeypatch.delenv("HTTPX_BIN", raising=False)
+        with patch("shutil.which", side_effect=lambda name: "/usr/bin/httpx-toolkit" if name == "httpx-toolkit" else None):
+            result = _resolve_httpx_bin()
+        assert result == "/usr/bin/httpx-toolkit"
+
+
+class TestResolveFfufWordlist:
+    def test_explicit_wordlist_returned_if_exists(self, tmp_path):
+        wl = tmp_path / "wordlist.txt"
+        wl.write_text("admin\nlogin\n")
+        assert _resolve_ffuf_wordlist(str(wl)) == str(wl)
+
+    def test_explicit_wordlist_returns_none_if_missing(self):
+        assert _resolve_ffuf_wordlist("/does/not/exist.txt") is None
+
+    def test_env_var_used_when_no_explicit(self, monkeypatch, tmp_path):
+        wl = tmp_path / "custom.txt"
+        wl.write_text("secret\n")
+        monkeypatch.setenv("FFUF_WORDLIST", str(wl))
+        assert _resolve_ffuf_wordlist() == str(wl)
+
+    def test_env_var_missing_file_returns_none(self, monkeypatch):
+        monkeypatch.setenv("FFUF_WORDLIST", "/nonexistent/wordlist.txt")
+        assert _resolve_ffuf_wordlist() is None
+
+    def test_returns_none_when_nothing_available(self, monkeypatch):
+        monkeypatch.delenv("FFUF_WORDLIST", raising=False)
+        with patch("firm.bounty.tools.scanner.Path") as mock_path:
+            mock_path.return_value.exists.return_value = False
+            mock_path.home.return_value.__truediv__ = lambda *_: mock_path.return_value
+            result = _resolve_ffuf_wordlist()
+        assert result is None
+
+    @patch("firm.bounty.tools.scanner._run", return_value="")
+    def test_scan_ffuf_wordlist_not_found_message(self, mock_run, enforcer, limiter, monkeypatch):
+        monkeypatch.delenv("FFUF_WORDLIST", raising=False)
+        with patch("firm.bounty.tools.scanner._resolve_ffuf_wordlist", return_value=None):
+            tools = {t["name"]: t["callable"] for t in make_scanning_tools(enforcer, limiter)}
+            result = tools["scan_ffuf"]("target.com")
+        assert "WORDLIST NOT FOUND" in result
+        mock_run.assert_not_called()
+
+    @patch("firm.bounty.tools.scanner._run", return_value="ffuf output")
+    def test_scan_ffuf_uses_env_wordlist(self, mock_run, enforcer, limiter, monkeypatch, tmp_path):
+        wl = tmp_path / "wl.txt"
+        wl.write_text("index\n")
+        monkeypatch.setenv("FFUF_WORDLIST", str(wl))
+        tools = {t["name"]: t["callable"] for t in make_scanning_tools(enforcer, limiter)}
+        result = tools["scan_ffuf"]("target.com")
+        assert "BLOCKED" not in result
+        assert "WORDLIST NOT FOUND" not in result
+        mock_run.assert_called_once()
