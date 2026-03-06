@@ -1,22 +1,19 @@
 """Tests for firm.core.federation — Inter-Firm Protocol (Layer 8)."""
 
 import time
+
 import pytest
 
 from firm.core.federation import (
+    INITIAL_TRUST,
+    MAX_SECONDMENT_DURATION,
+    SECONDMENT_AUTHORITY_DISCOUNT,
     FederationEngine,
     FederationMessage,
-    AgentSecondment,
+    MessageType,
     PeerFirm,
     PeerStatus,
-    MessageType,
     SecondmentStatus,
-    INITIAL_TRUST,
-    TRUST_LEARNING_RATE,
-    MIN_TRUST_TO_SECOND,
-    MAX_SECONDMENT_DURATION,
-    DEFAULT_SECONDMENT_DURATION,
-    SECONDMENT_AUTHORITY_DISCOUNT,
 )
 from firm.core.types import AgentId, FirmId
 
@@ -393,7 +390,7 @@ class TestSecondment:
     def test_get_secondments_filters(self, engine, peer_id):
         self._setup_trusted_peer(engine, peer_id)
         sec1 = engine.second_agent(AgentId("a"), "A", 0.7, peer_id)
-        sec2 = engine.second_agent(AgentId("b"), "B", 0.6, peer_id)
+        engine.second_agent(AgentId("b"), "B", 0.6, peer_id)
         engine.complete_secondment(sec1.id)
 
         active = engine.get_secondments(active_only=True)

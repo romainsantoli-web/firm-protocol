@@ -6,7 +6,7 @@
 import pytest
 
 from firm.bounty.dedup import DeduplicationEngine
-from firm.bounty.vulnerability import Vulnerability, VulnDatabase
+from firm.bounty.vulnerability import VulnDatabase, Vulnerability
 
 
 @pytest.fixture

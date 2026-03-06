@@ -7,32 +7,42 @@ Does NOT require real API keys — all LLM calls are mocked.
 
 from __future__ import annotations
 
-import json
-import os
 import subprocess
-import time
-from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Providers
-# ─────────────────────────────────────────────────────────────────────────────
-
+from firm.api.app import app, state
+from firm.llm.agent import AgentConfig, LLMAgent, create_llm_agent
+from firm.llm.executor import (
+    ExecutionResult,
+    ExecutionStatus,
+    TaskExecutor,
+    ToolExecution,
+    _estimate_cost,
+)
 from firm.llm.providers import (
-    LLMProvider,
+    ClaudeProvider,
+    CopilotProvider,
+    GPTProvider,
     LLMMessage,
+    LLMProvider,
     LLMResponse,
+    MistralProvider,
     ToolCall,
     ToolDefinition,
-    ClaudeProvider,
-    GPTProvider,
-    MistralProvider,
-    CopilotProvider,
     get_provider,
 )
+from firm.llm.tools import (
+    BUILTIN_TOOLS,
+    Tool,
+    ToolKit,
+    ToolResult,
+    _run_cmd,
+    create_builtin_toolkit,
+)
+from firm.runtime import Firm
 
 
 class TestLLMMessage:
@@ -207,16 +217,6 @@ class TestCopilotProvider:
 # ─────────────────────────────────────────────────────────────────────────────
 # Tools
 # ─────────────────────────────────────────────────────────────────────────────
-
-from firm.llm.tools import (
-    Tool,
-    ToolResult,
-    ToolKit,
-    BUILTIN_TOOLS,
-    create_builtin_toolkit,
-    _run_cmd,
-    _SAFE_COMMANDS,
-)
 
 
 class TestToolResult:
@@ -393,14 +393,6 @@ class TestRunCmd:
 # ─────────────────────────────────────────────────────────────────────────────
 # Executor
 # ─────────────────────────────────────────────────────────────────────────────
-
-from firm.llm.executor import (
-    TaskExecutor,
-    ExecutionResult,
-    ExecutionStatus,
-    ToolExecution,
-    _estimate_cost,
-)
 
 
 class MockProvider(LLMProvider):
@@ -603,9 +595,6 @@ class TestTaskExecutor:
 # Agent
 # ─────────────────────────────────────────────────────────────────────────────
 
-from firm.runtime import Firm
-from firm.llm.agent import LLMAgent, AgentConfig, create_llm_agent
-
 
 class TestLLMAgent:
     def _make_agent(self, tmp_path, authority=0.5) -> LLMAgent:
@@ -741,9 +730,6 @@ class TestCreateLLMAgent:
 # ─────────────────────────────────────────────────────────────────────────────
 # API
 # ─────────────────────────────────────────────────────────────────────────────
-
-from fastapi.testclient import TestClient
-from firm.api.app import app, state
 
 
 @pytest.fixture

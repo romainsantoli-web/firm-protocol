@@ -1,6 +1,8 @@
 import pytest
-from firm.core.reputation import ReputationBridge, ReputationAttestation, ImportedReputation
+
+from firm.core.reputation import ReputationAttestation, ReputationBridge
 from firm.core.types import AgentId, FirmId
+
 
 def test_reputation_bridge_initialization():
     """Test initialization of ReputationBridge."""

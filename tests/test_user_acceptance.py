@@ -23,16 +23,14 @@ import tempfile
 
 import pytest
 
-from firm.runtime import Firm
 from firm import (
     FirmPlugin,
-    save_firm,
-    load_firm,
-    snapshot,
     diff_snapshots,
+    load_firm,
+    save_firm,
+    snapshot,
 )
-from firm.core.types import AgentStatus, VoteChoice
-
+from firm.runtime import Firm
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -238,7 +236,6 @@ class TestMarketWorkflow:
         firm.accept_bid(task.id, bid.id)
 
         # Régler (succès)
-        alice_credits_before = alice.credits
         bob_credits_before = bob.credits
         settlement = firm.settle_task(task.id, success=True)
 
@@ -384,7 +381,7 @@ class TestRolesMemoryEvolution:
 
         # Get current learning rate
         params_before = firm.get_firm_parameters("authority")
-        old_lr = params_before.get("learning_rate", 0.05)
+        params_before.get("learning_rate", 0.05)
 
         # Propose evolution (Alice has authority >= 0.85)
         evo = firm.propose_evolution(

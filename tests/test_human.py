@@ -1,9 +1,8 @@
 """Tests for Human Override Interface (Layer 11)."""
-import pytest
 from firm.core.agent import Agent, AgentRole
 from firm.core.constitution import ConstitutionalAgent
-from firm.core.governance import GovernanceEngine, Proposal
-from firm.core.human import HumanOverride, HUMAN_AGENT_ID, OverrideEvent
+from firm.core.governance import GovernanceEngine
+from firm.core.human import HumanOverride, OverrideEvent
 from firm.core.ledger import ResponsibilityLedger
 from firm.core.types import AgentStatus, ProposalStatus
 
@@ -91,7 +90,7 @@ class TestRoleOverride:
         human, _, ledger = _make_override()
         agent = Agent(name="dev", authority=0.2)  # Low authority
         role = AgentRole(name="admin")
-        event = human.force_grant_role(agent, role, reason="emergency")
+        human.force_grant_role(agent, role, reason="emergency")
         assert agent.has_role("admin")
         # Logged
         entries = ledger.get_entries(limit=10)

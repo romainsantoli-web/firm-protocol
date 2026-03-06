@@ -20,64 +20,61 @@ from typing import Any
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditReport
-from firm.core.authority import AuthorityEngine, THRESHOLD_PROBATION
+from firm.core.authority import AuthorityEngine
 from firm.core.constitution import ConstitutionalAgent
+from firm.core.events import EventBus
 from firm.core.evolution import (
+    MIN_AUTHORITY_TO_EVOLVE,
     EvolutionEngine,
     EvolutionProposal,
     ParameterChange,
-    MIN_AUTHORITY_TO_EVOLVE,
 )
 from firm.core.federation import (
+    MIN_AUTHORITY_TO_FEDERATE,
+    MIN_AUTHORITY_TO_SECOND,
+    MIN_AUTHORITY_TO_SEND,
+    AgentSecondment,
     FederationEngine,
     FederationMessage,
-    AgentSecondment,
     PeerFirm,
-    MessageType,
-    MIN_AUTHORITY_TO_FEDERATE,
-    MIN_AUTHORITY_TO_SEND,
-    MIN_AUTHORITY_TO_SECOND,
 )
 from firm.core.governance import GovernanceEngine, Proposal, SimulationResult, Vote
 from firm.core.human import HumanOverride
 from firm.core.ledger import ResponsibilityLedger
 from firm.core.market import (
+    MIN_AUTHORITY_TO_BID,
+    MIN_AUTHORITY_TO_POST,
+    MarketBid,
     MarketEngine,
     MarketTask,
-    MarketBid,
     Settlement,
-    MIN_AUTHORITY_TO_POST,
-    MIN_AUTHORITY_TO_BID,
 )
 from firm.core.memory import MemoryEngine, MemoryEntry
 from firm.core.meta import (
-    MetaConstitutional,
-    Amendment,
     MIN_AUTHORITY_TO_AMEND,
+    Amendment,
+    MetaConstitutional,
 )
-from firm.core.reputation import (
-    ReputationBridge,
-    ReputationAttestation,
-    ImportedReputation,
-)
-from firm.core.events import EventBus, Event
-from firm.core.plugins import PluginManager, FirmPlugin
+from firm.core.plugins import PluginManager
 from firm.core.prediction import (
+    Position,
+    PositionSide,
     PredictionEngine,
     PredictionMarket,
     PredictionSettlement,
-    Position,
-    MarketStatus,
-    PositionSide,
 )
-from firm.core.roles import RoleEngine, RoleAssignment, RoleDefinition
-from firm.core.spawn import SpawnEngine, AutoRestructurer, RestructureRecommendation
+from firm.core.reputation import (
+    ImportedReputation,
+    ReputationAttestation,
+    ReputationBridge,
+)
+from firm.core.roles import RoleAssignment, RoleDefinition, RoleEngine
+from firm.core.spawn import AutoRestructurer, SpawnEngine
 from firm.core.types import (
     AgentId,
     AgentStatus,
     FirmId,
     LedgerAction,
-    Severity,
     VoteChoice,
 )
 
@@ -322,7 +319,7 @@ class Firm:
         violations = self.constitution.check_proposal(f"{title}: {description}")
         if violations:
             raise PermissionError(
-                f"Proposal violates invariant(s): "
+                "Proposal violates invariant(s): "
                 + ", ".join(v.invariant_id for v in violations)
             )
 

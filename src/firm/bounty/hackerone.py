@@ -10,13 +10,11 @@ feedback loop.  Requires env vars ``HACKERONE_API_USERNAME`` and
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
 
 import httpx
 
 from firm.bounty.scope import TargetScope
 from firm.bounty.vulnerability import Vulnerability
-
 
 _BASE = "https://api.hackerone.com/v1"
 

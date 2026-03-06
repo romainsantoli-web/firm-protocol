@@ -4,13 +4,10 @@ import pytest
 
 from firm.core.agent import Agent
 from firm.core.constitution import (
-    ALL_INVARIANTS,
     INVARIANT_EVOLUTION_PRESERVED,
     INVARIANT_HUMAN_CONTROL,
     ConstitutionalAgent,
-    Invariant,
 )
-from firm.core.types import AgentStatus
 
 
 class TestInvariant:
@@ -79,7 +76,7 @@ class TestConstitutionalAgent:
 
     def test_deactivate_kill_switch(self):
         ca = ConstitutionalAgent()
-        result = ca.deactivate_kill_switch()
+        ca.deactivate_kill_switch()
         assert not ca.kill_switch_active
 
     def test_violations_history(self):

@@ -1,13 +1,12 @@
 """Tests for Role Fluidity Engine (Layer 3)."""
 import time
+
 import pytest
-from firm.core.agent import Agent, AgentRole
+
+from firm.core.agent import Agent
 from firm.core.roles import (
-    RoleEngine,
-    RoleDefinition,
-    RoleAssignment,
-    MIN_AUTHORITY_FOR_STANDARD_ROLE,
     MIN_AUTHORITY_FOR_CRITICAL_ROLE,
+    RoleEngine,
 )
 from firm.core.types import AgentStatus
 

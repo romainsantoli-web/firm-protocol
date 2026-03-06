@@ -15,20 +15,15 @@ from __future__ import annotations
 
 import logging
 import time
-import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
+from firm.llm.agent import LLMAgent, create_llm_agent
 from firm.runtime import Firm
-from firm.llm.agent import LLMAgent, AgentConfig, create_llm_agent
-from firm.llm.executor import ExecutionResult
-from firm.llm.providers import get_provider
 
 logger = logging.getLogger(__name__)
 

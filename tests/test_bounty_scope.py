@@ -7,7 +7,6 @@ import pytest
 
 from firm.bounty.scope import Asset, AssetType, ScopeEnforcer, TargetScope
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

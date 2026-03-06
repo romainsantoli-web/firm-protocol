@@ -9,7 +9,6 @@ from firm.core.reputation import (
 )
 from firm.core.types import AgentId, FirmId
 
-
 # ── PredictionAccuracyAttestation ────────────────────────────────────────────
 
 

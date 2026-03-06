@@ -7,28 +7,20 @@ ALL possible inputs, not just hand-picked examples.
 
 from __future__ import annotations
 
-import math
-
-import pytest
-from hypothesis import given, settings, assume, HealthCheck
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from firm.runtime import Firm
 from firm import Agent, AgentRole
-from firm.core.types import AgentId, AgentStatus, Severity
 from firm.core.authority import AuthorityEngine
-from firm.core.constitution import ConstitutionalAgent, ALL_INVARIANTS
+from firm.core.constitution import ALL_INVARIANTS
+from firm.core.federation import FederationEngine
 from firm.core.ledger import ResponsibilityLedger
+from firm.core.market import MarketEngine
 from firm.core.memory import MemoryEngine
 from firm.core.roles import RoleEngine
 from firm.core.spawn import SpawnEngine
-from firm.core.governance import GovernanceEngine
-from firm.core.market import MarketEngine
-from firm.core.evolution import EvolutionEngine
-from firm.core.federation import FederationEngine
-from firm.core.reputation import ReputationBridge
-from firm.core.meta import MetaConstitutional
-
+from firm.core.types import AgentId, AgentStatus
+from firm.runtime import Firm
 
 # ── Strategies ───────────────────────────────────────────────────────────────
 
@@ -499,7 +491,7 @@ class TestFederationInvariants:
         """Peer trust always stays in [0.0, 1.0]."""
         from firm.core.types import FirmId
         engine = FederationEngine(FirmId("my-firm"), "My Firm")
-        peer = engine.register_peer(FirmId("peer"), "Peer Firm")
+        engine.register_peer(FirmId("peer"), "Peer Firm")
         for s in successes[:n_updates]:
             engine.update_trust(FirmId("peer"), s)
             p = engine.get_peer(FirmId("peer"))

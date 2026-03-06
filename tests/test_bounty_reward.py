@@ -5,7 +5,7 @@
 
 import pytest
 
-from firm.bounty.reward import RewardEngine, SEVERITY_MULTIPLIERS
+from firm.bounty.reward import RewardEngine
 from firm.bounty.vulnerability import Vulnerability, VulnSeverity
 
 

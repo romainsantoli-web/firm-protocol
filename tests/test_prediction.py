@@ -5,12 +5,9 @@ import time
 import pytest
 
 from firm.core.prediction import (
-    CALIBRATION_EMA_ALPHA,
     CALIBRATION_INITIAL,
     CALIBRATION_MAX,
     CALIBRATION_MIN,
-    MAX_STAKE,
-    MIN_STAKE,
     MarketStatus,
     Position,
     PositionSide,
@@ -19,7 +16,6 @@ from firm.core.prediction import (
     PredictionSettlement,
 )
 from firm.core.types import AgentId
-
 
 # ── Market Creation ──────────────────────────────────────────────────────────
 

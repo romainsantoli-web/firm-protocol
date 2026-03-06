@@ -6,7 +6,6 @@ import pytest
 
 from firm.core.plugins import FirmPlugin, PluginManager
 
-
 # ── Helper plugins ───────────────────────────────────────────────────────────
 
 

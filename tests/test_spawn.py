@@ -1,13 +1,12 @@
 """Tests for Spawn/Merge Engine (Layer 7)."""
 import pytest
+
 from firm.core.agent import Agent, AgentRole
 from firm.core.spawn import (
-    SpawnEngine,
-    SpawnEvent,
     SPAWN_AUTHORITY_FRACTION,
     SPAWN_CREDIT_FRACTION,
-    MIN_AUTHORITY_TO_SPAWN,
-    MIN_AUTHORITY_TO_MERGE,
+    SpawnEngine,
+    SpawnEvent,
 )
 from firm.core.types import AgentStatus
 

@@ -10,18 +10,17 @@ An LLMAgent wraps a FIRM Agent with:
 
 from __future__ import annotations
 
-import time
 import logging
-from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
+from firm.llm.executor import ExecutionResult, ExecutionStatus, TaskExecutor
 from firm.llm.providers import LLMProvider
-from firm.llm.tools import ToolKit, Tool, ToolResult, create_builtin_toolkit
-from firm.llm.executor import TaskExecutor, ExecutionResult, ExecutionStatus
+from firm.llm.tools import ToolKit, create_builtin_toolkit
 
 if TYPE_CHECKING:
-    from firm.runtime import Firm
     from firm.core.agent import Agent
+    from firm.runtime import Firm
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +142,6 @@ Your current authority ({self.agent.authority:.2f}) grants you access to:"""
                       "file_read", "file_list", "file_search",
                       "python_test"}
 
-        write_tools = {"git_add", "git_commit", "file_write", "python_run"}
 
         dangerous = {"terminal_run", "http_get", "http_post"}
 

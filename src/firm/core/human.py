@@ -28,7 +28,7 @@ from typing import Any
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.constitution import ConstitutionalAgent
-from firm.core.governance import GovernanceEngine, Proposal
+from firm.core.governance import Proposal
 from firm.core.ledger import ResponsibilityLedger
 from firm.core.types import AgentId, AgentStatus, LedgerAction, ProposalStatus
 

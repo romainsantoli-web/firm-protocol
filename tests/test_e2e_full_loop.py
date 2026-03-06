@@ -16,18 +16,14 @@ Pure in-memory — no LLM calls.
 from __future__ import annotations
 
 import json
-import sys
-import time
-from dataclasses import dataclass
-from typing import Any
+
+from firm.core.agent import AgentId
+from firm.core.federation import MessageType
 
 # --------------------------------------------------------------------------- #
 # Setup
 # --------------------------------------------------------------------------- #
 from firm.runtime import Firm
-from firm.core.agent import AgentId
-from firm.core.federation import MessageType
-from firm.core.prediction import PredictionEngine, MarketStatus
 
 SEPARATOR = "═" * 72
 THIN_SEP = "─" * 72
@@ -61,16 +57,16 @@ def run_e2e() -> None:
     a_analyst = alpha.add_agent("Analyst", authority=0.55, credits=200.0)
     a_intern = alpha.add_agent("Intern", authority=0.15, credits=50.0)
 
-    print(f"  Alpha agents:")
+    print("  Alpha agents:")
     for a in alpha.get_agents():
         print(f"    {a.name:12s}  auth={a.authority:.4f}  credits={a.credits:.1f}")
 
     # --- FIRM Beta (2 agents) ---
     beta = Firm(name="Beta-Labs", firm_id="beta", learning_rate=0.05, decay=0.02)
     b_lead = beta.add_agent("Lead", authority=0.80, credits=300.0)
-    b_dev = beta.add_agent("Developer", authority=0.50, credits=150.0)
+    beta.add_agent("Developer", authority=0.50, credits=150.0)
 
-    print(f"\n  Beta agents:")
+    print("\n  Beta agents:")
     for a in beta.get_agents():
         print(f"    {a.name:12s}  auth={a.authority:.4f}  credits={a.credits:.1f}")
 
@@ -123,13 +119,13 @@ def run_e2e() -> None:
     print(f"  Market created: {m1.id[:12]}… ({m1.question})")
 
     # CEO predicts YES with high confidence (correct)
-    p1_ceo = alpha.predict(a_ceo.id, m1.id, "yes", stake=50.0, probability=0.85)
+    alpha.predict(a_ceo.id, m1.id, "yes", stake=50.0, probability=0.85)
     # Engineer predicts YES with medium confidence (correct)
-    p1_eng = alpha.predict(a_eng.id, m1.id, "yes", stake=30.0, probability=0.70)
+    alpha.predict(a_eng.id, m1.id, "yes", stake=30.0, probability=0.70)
     # Analyst predicts NO (wrong)
-    p1_ana = alpha.predict(a_analyst.id, m1.id, "no", stake=25.0, probability=0.30)
+    alpha.predict(a_analyst.id, m1.id, "no", stake=25.0, probability=0.30)
     # Intern predicts YES weakly (correct but poorly calibrated)
-    p1_int = alpha.predict(a_intern.id, m1.id, "yes", stake=10.0, probability=0.52)
+    alpha.predict(a_intern.id, m1.id, "yes", stake=10.0, probability=0.52)
 
     print(f"  4 positions taken — total staked: {m1.total_stake:.1f}")
 
@@ -355,7 +351,7 @@ def run_e2e() -> None:
 
     # Prediction stats
     pred_stats = alpha.prediction.get_stats()
-    print(f"\n  Prediction engine stats:")
+    print("\n  Prediction engine stats:")
     for k, v in pred_stats.items():
         print(f"    {k}: {v}")
 
@@ -371,7 +367,7 @@ def run_e2e() -> None:
     # Federation stats
     alpha_msgs = alpha.federation.get_messages()
     beta_msgs = beta.federation.get_messages()
-    print(f"\n  Federation messages:")
+    print("\n  Federation messages:")
     print(f"    Alpha outbox: {len(alpha_msgs)}")
     print(f"    Beta outbox:  {len(beta_msgs)}")
     print(f"    Alpha trust for Beta: {alpha_trust_beta:.4f}")

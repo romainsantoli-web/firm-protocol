@@ -14,11 +14,7 @@ from __future__ import annotations
 
 import time
 
-import pytest
-
 from firm.runtime import Firm
-from firm.core.types import AgentId, Severity
-
 
 # ── Scale tests ──────────────────────────────────────────────────────────────
 
@@ -127,7 +123,6 @@ class TestMemoryStress:
         challengers = [firm.add_agent(f"ch-{i}", authority=0.5) for i in range(10)]
 
         entry = firm.contribute_memory(contributor.id, "contested fact", tags=["debate"])
-        initial_weight = entry.weight
 
         for s in supporters:
             firm.reinforce_memory(s.id, entry.id)

@@ -3,8 +3,9 @@
 All HTTP calls are mocked — no real API calls.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from firm.bounty.hackerone import HackerOneClient
 from firm.bounty.vulnerability import Vulnerability, VulnSeverity

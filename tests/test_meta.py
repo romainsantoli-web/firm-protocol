@@ -3,20 +3,15 @@
 import pytest
 
 from firm.core.constitution import (
-    Invariant,
     ConstitutionalAgent,
-    INVARIANT_HUMAN_CONTROL,
-    INVARIANT_EVOLUTION_PRESERVED,
+    Invariant,
 )
 from firm.core.meta import (
-    MetaConstitutional,
-    Amendment,
-    AmendmentType,
-    AmendmentStatus,
     IMMUTABLE_INVARIANT_IDS,
-    MIN_AUTHORITY_TO_AMEND,
-    AMENDMENT_APPROVAL_RATIO,
-    MIN_AMENDMENT_VOTERS,
+    Amendment,
+    AmendmentStatus,
+    AmendmentType,
+    MetaConstitutional,
 )
 from firm.core.types import AgentId
 

@@ -1,7 +1,8 @@
 """Tests for firm.core.governance — Governance Engine"""
 
-import pytest
 import time
+
+import pytest
 
 from firm.core.agent import Agent
 from firm.core.governance import (

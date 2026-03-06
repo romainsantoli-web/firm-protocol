@@ -2,7 +2,7 @@
 
 import pytest
 
-from firm.core.prediction import MarketStatus, PositionSide
+from firm.core.prediction import MarketStatus
 from firm.runtime import Firm
 
 

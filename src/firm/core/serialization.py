@@ -17,12 +17,11 @@ Design choices:
 
 from __future__ import annotations
 
-import copy
 import json
 import logging
 import time
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from firm.runtime import Firm
@@ -65,7 +64,6 @@ def load_firm(source: str | Path | dict[str, Any]) -> "Firm":
     Returns:
         A new Firm instance with restored state
     """
-    from firm.runtime import Firm
 
     if isinstance(source, dict):
         state = source
@@ -151,7 +149,6 @@ def diff_snapshots(
 
 def _extract_state(firm: "Firm") -> dict[str, Any]:
     """Extract all restorable state from a Firm."""
-    from firm.core.types import AgentStatus
 
     agents = {}
     for agent in firm.get_agents(active_only=False):
@@ -283,10 +280,10 @@ def _extract_prediction_state(firm: "Firm") -> dict[str, Any]:
 
 def _restore_state(state: dict[str, Any]) -> "Firm":
     """Reconstruct a Firm from saved state."""
-    from firm.runtime import Firm
     from firm.core.agent import Agent, AgentRole
-    from firm.core.types import AgentId, AgentStatus
     from firm.core.memory import MemoryEntry
+    from firm.core.types import AgentId, AgentStatus
+    from firm.runtime import Firm
 
     auth_config = state.get("authority_config", {})
     firm = Firm(
@@ -354,7 +351,7 @@ def _restore_state(state: dict[str, Any]) -> "Firm":
     # Restore prediction markets
     pred_state = state.get("prediction", {})
     for mdata in pred_state.get("markets", []):
-        from firm.core.prediction import PredictionMarket, Position, MarketStatus, PositionSide
+        from firm.core.prediction import MarketStatus, Position, PositionSide, PredictionMarket
         positions = []
         for pdata in mdata.get("positions", []):
             positions.append(Position(

@@ -1,14 +1,10 @@
 """Tests for firm.core.spawn.AutoRestructurer — Self-restructuring engine."""
 
-import math
 
 import pytest
 
 from firm.core.agent import Agent, AgentRole
 from firm.core.spawn import (
-    AUTO_MERGE_SIMILARITY,
-    AUTO_PRUNE_AUTHORITY,
-    TASK_ENTROPY_SPAWN_THRESHOLD,
     AutoRestructurer,
     RestructureRecommendation,
 )

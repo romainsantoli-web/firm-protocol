@@ -1,20 +1,18 @@
 """Tests for firm.core.reputation — Reputation Bridge (Layer 9)."""
 
 import time
+
 import pytest
 
 from firm.core.reputation import (
-    ReputationBridge,
-    ReputationAttestation,
-    ImportedReputation,
-    AttestationStatus,
-    DEFAULT_IMPORT_DISCOUNT,
-    MIN_IMPORT_DISCOUNT,
-    MAX_IMPORT_DISCOUNT,
-    MIN_TRUST_TO_IMPORT,
-    FOREIGN_REPUTATION_DECAY,
     MAX_ATTESTATION_AGE,
+    MAX_IMPORT_DISCOUNT,
     MAX_IMPORTED_AUTHORITY_BOOST,
+    MIN_IMPORT_DISCOUNT,
+    AttestationStatus,
+    ImportedReputation,
+    ReputationAttestation,
+    ReputationBridge,
 )
 from firm.core.types import AgentId, FirmId
 
@@ -195,7 +193,7 @@ class TestImportAttestation:
             sample_attestation, peer_trust=0.4,
         )
 
-        # Create fresh bridge + attestation for second import  
+        # Create fresh bridge + attestation for second import
         bridge2 = ReputationBridge(FirmId("home2"))
         att2 = ReputationAttestation(
             agent_id=AgentId("agent-x"),

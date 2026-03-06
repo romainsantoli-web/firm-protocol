@@ -97,8 +97,8 @@ class TestFullLifecycle:
     def test_phase3_roles(self) -> None:
         """Define roles and assign them based on authority."""
         # Define roles
-        qa_role = self.firm.define_role("QA Lead", min_authority=0.5, description="Quality")
-        dev_role = self.firm.define_role("Developer", min_authority=0.3, description="Dev")
+        self.firm.define_role("QA Lead", min_authority=0.5, description="Quality")
+        self.firm.define_role("Developer", min_authority=0.3, description="Dev")
 
         # Engineer can be QA Lead (0.65 > 0.5)
         assignment = self.firm.assign_role(self.eng.id, "QA Lead")
@@ -238,7 +238,7 @@ class TestFullLifecycle:
     def test_phase9_human_override(self) -> None:
         """Kill switch stops all operations, then can be released."""
         # Activate kill switch
-        event = self.firm.human.activate_kill_switch(reason="Emergency maintenance")
+        self.firm.human.activate_kill_switch(reason="Emergency maintenance")
         assert self.firm.constitution.kill_switch_active is True
 
         # Actions should be blocked while kill switch is active
@@ -415,7 +415,7 @@ class TestFullScenario:
         firm.governance.open_voting(proposal)
         firm.vote(proposal.id, alice.id, "approve")
         firm.vote(proposal.id, bob.id, "approve")
-        result = firm.finalize_proposal(proposal.id)
+        firm.finalize_proposal(proposal.id)
 
         # === Act 5: Spawn & Scale ===
         bot = firm.spawn_agent(alice.id, "CI-Bot")
@@ -432,7 +432,7 @@ class TestFullScenario:
         firm.settle_task(task.id, success=True)
 
         # === Act 7: Federation ===
-        peer = firm.register_peer(alice.id, "partner-beta", "Partner Beta")
+        firm.register_peer(alice.id, "partner-beta", "Partner Beta")
         # Build trust for secondment (need ~10 updates to cross 0.5 threshold)
         for _ in range(10):
             firm.federation.update_trust("partner-beta", success=True, weight=1.0)

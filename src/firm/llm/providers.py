@@ -13,11 +13,33 @@ import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Generator
+from typing import Any
 
-import anthropic
-import openai
-import mistralai
+# Lazy imports — only loaded when their providers are actually instantiated
+openai = None   # type: ignore
+anthropic = None  # type: ignore
+mistralai = None  # type: ignore
+
+def _ensure_openai():
+    global openai
+    if openai is None:
+        import openai as _openai
+        openai = _openai
+    return openai
+
+def _ensure_anthropic():
+    global anthropic
+    if anthropic is None:
+        import anthropic as _anthropic
+        anthropic = _anthropic
+    return anthropic
+
+def _ensure_mistralai():
+    global mistralai
+    if mistralai is None:
+        import mistralai as _mistralai
+        mistralai = _mistralai
+    return mistralai
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,7 +152,8 @@ class ClaudeProvider(LLMProvider):
 
     def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
         super().__init__(model, api_key, **kwargs)
-        self._client = anthropic.Anthropic(
+        _anthropic = _ensure_anthropic()
+        self._client = _anthropic.Anthropic(
             api_key=self.api_key or os.environ.get("ANTHROPIC_API_KEY"),
         )
 
@@ -243,7 +266,7 @@ class GPTProvider(LLMProvider):
 
     def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
         super().__init__(model, api_key, **kwargs)
-        self._client = openai.OpenAI(
+        self._client = _ensure_openai().OpenAI(
             api_key=self.api_key or os.environ.get("OPENAI_API_KEY"),
             base_url=kwargs.get("base_url"),
         )
@@ -368,7 +391,8 @@ class MistralProvider(LLMProvider):
 
     def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
         super().__init__(model, api_key, **kwargs)
-        self._client = mistralai.Mistral(
+        _mistral = _ensure_mistralai()
+        self._client = _mistral.Mistral(
             api_key=self.api_key or os.environ.get("MISTRAL_API_KEY"),
         )
 
@@ -489,7 +513,7 @@ class CopilotProvider(GPTProvider):
         return "gpt-4o"
 
 
-class CopilotProProvider(GPTProvider):
+class CopilotProProvider(LLMProvider):
     """GitHub Copilot Pro provider — full catalog (Claude, GPT-5, Gemini, Grok).
 
     Uses the Copilot internal API (api.githubcopilot.com) which requires
@@ -501,12 +525,16 @@ class CopilotProProvider(GPTProvider):
       3. Use JWT as Bearer token on api.githubcopilot.com/chat/completions
 
     The JWT expires every ~30 min — auto-refresh via cached OAuth token.
+
+    This provider uses httpx directly — no openai/anthropic SDK needed.
     """
 
     name = "copilot-pro"
 
     # VS Code Copilot OAuth App client_id (public, embedded in the extension)
     _CLIENT_ID = "Iv1.b507a08c87ecfe98"
+
+    _BASE_URL = "https://api.githubcopilot.com"
 
     def __init__(self, model: str | None = None, api_key: str | None = None, **kwargs: Any):
         # api_key can be: (1) Copilot JWT directly, (2) OAuth token, (3) loaded from cache
@@ -527,12 +555,8 @@ class CopilotProProvider(GPTProvider):
                 "Run the device flow first or set COPILOT_JWT env var."
             )
 
-        super().__init__(
-            model=model,
-            api_key=jwt,
-            base_url="https://api.githubcopilot.com",
-            **kwargs,
-        )
+        super().__init__(model=model, api_key=jwt, **kwargs)
+        self._jwt = jwt
 
     def _default_model(self) -> str:
         return "claude-sonnet-4"
@@ -557,8 +581,9 @@ class CopilotProProvider(GPTProvider):
 
     def _refresh_jwt(self) -> str | None:
         """Refresh Copilot JWT using cached OAuth token."""
-        import httpx as _httpx
         import json as _json
+
+        import httpx as _httpx
         if not self._oauth_token:
             return None
         try:
@@ -593,7 +618,7 @@ class CopilotProProvider(GPTProvider):
         if self._jwt_expires and int(time.time()) > self._jwt_expires - 60:
             new_jwt = self._refresh_jwt()
             if new_jwt:
-                self._client.api_key = new_jwt
+                self._jwt = new_jwt
 
     # Models that require the /responses API instead of /chat/completions
     _RESPONSES_MODELS = ("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex",
@@ -615,22 +640,73 @@ class CopilotProProvider(GPTProvider):
         Copilot Pro wraps some Claude models with 2 choices — we merge them.
         """
         self._ensure_valid_jwt()
-        self._inject_copilot_headers()
 
         if self._is_responses_model():
             return self._chat_responses(messages, tools, temperature, max_tokens)
         return self._chat_completions(messages, tools, temperature, max_tokens)
 
-    def _inject_copilot_headers(self):
-        """Inject Copilot-specific headers once."""
-        if not hasattr(self, "_headers_injected"):
-            self._client._custom_headers.update({
-                "Editor-Version": "vscode/1.96.0",
-                "Editor-Plugin-Version": "copilot-chat/0.24.0",
-                "Copilot-Integration-Id": "vscode-chat",
-                "Openai-Intent": "conversation-panel",
-            })
-            self._headers_injected = True
+    def _copilot_headers(self) -> dict[str, str]:
+        """Return standard Copilot headers for all requests."""
+        return {
+            "Authorization": f"Bearer {self._jwt}",
+            "Content-Type": "application/json",
+            "Editor-Version": "vscode/1.96.0",
+            "Editor-Plugin-Version": "copilot-chat/0.24.0",
+            "Copilot-Integration-Id": "vscode-chat",
+            "Openai-Intent": "conversation-panel",
+        }
+
+    # ── Message/tool conversion (OpenAI-compatible format) ──────────────────
+
+    # Models requiring max_completion_tokens instead of max_tokens (and no temperature)
+    _COMPLETION_TOKENS_MODELS = ("o1", "o1-mini", "o1-preview", "o3", "o3-mini", "o3-pro",
+                                  "o4-mini", "gpt-5", "gpt-5-mini", "gpt-5-nano")
+
+    def _convert_tools(self, tools: list[ToolDefinition]) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                },
+            }
+            for t in tools
+        ]
+
+    def _convert_messages(self, messages: list[LLMMessage]) -> list[dict]:
+        converted = []
+        for msg in messages:
+            if msg._raw is not None:
+                converted.append(msg._raw)
+                continue
+            if msg.role == "tool":
+                converted.append({
+                    "role": "tool",
+                    "content": msg.content,
+                    "tool_call_id": msg.tool_call_id,
+                })
+            elif msg.role == "assistant" and msg.tool_calls:
+                tc_list = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments),
+                        },
+                    }
+                    for tc in msg.tool_calls
+                ]
+                converted.append({
+                    "role": "assistant",
+                    "content": msg.content or None,
+                    "tool_calls": tc_list,
+                })
+            else:
+                converted.append({"role": msg.role, "content": msg.content})
+        return converted
 
     # ── /responses API path (Codex models) ──────────────────────────────────
 
@@ -697,18 +773,11 @@ class CopilotProProvider(GPTProvider):
         if tools:
             payload["tools"] = self._convert_tools_for_responses(tools)
 
-        headers = {
-            "Authorization": f"Bearer {self._client.api_key}",
-            "Content-Type": "application/json",
-            "Editor-Version": "vscode/1.96.0",
-            "Editor-Plugin-Version": "copilot-chat/0.24.0",
-            "Copilot-Integration-Id": "vscode-chat",
-            "Openai-Intent": "conversation-panel",
-        }
+        headers = self._copilot_headers()
 
         t0 = time.monotonic()
         r = _httpx.post(
-            "https://api.githubcopilot.com/responses",
+            f"{self._BASE_URL}/responses",
             headers=headers,
             json=payload,
             timeout=120,
@@ -716,10 +785,8 @@ class CopilotProProvider(GPTProvider):
         latency = (time.monotonic() - t0) * 1000
 
         if r.status_code != 200:
-            raise openai.BadRequestError(
-                message=f"Codex /responses error: {r.text[:300]}",
-                response=r,
-                body=r.text,
+            raise RuntimeError(
+                f"Codex /responses error ({r.status_code}): {r.text[:300]}"
             )
 
         data = r.json()
@@ -781,46 +848,68 @@ class CopilotProProvider(GPTProvider):
         temperature: float,
         max_tokens: int,
     ) -> LLMResponse:
-        """Call the /chat/completions endpoint (standard path)."""
+        """Call the /chat/completions endpoint via httpx (no openai SDK needed)."""
+        import httpx as _httpx
+
         use_completion_tokens = any(self.model.startswith(p) for p in self._COMPLETION_TOKENS_MODELS)
-        kwargs: dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": self._convert_messages(messages),
         }
         if use_completion_tokens:
-            kwargs["max_completion_tokens"] = max_tokens
+            payload["max_completion_tokens"] = max_tokens
         else:
-            kwargs["temperature"] = temperature
-            kwargs["max_tokens"] = max_tokens
+            payload["temperature"] = temperature
+            payload["max_tokens"] = max_tokens
         if tools:
-            kwargs["tools"] = self._convert_tools(tools)
+            payload["tools"] = self._convert_tools(tools)
 
         t0 = time.monotonic()
-        response = self._client.chat.completions.create(**kwargs)
+        r = _httpx.post(
+            f"{self._BASE_URL}/chat/completions",
+            headers=self._copilot_headers(),
+            json=payload,
+            timeout=120,
+        )
         latency = (time.monotonic() - t0) * 1000
+
+        if r.status_code != 200:
+            raise RuntimeError(
+                f"CopilotPro /chat/completions error ({r.status_code}): {r.text[:500]}"
+            )
+
+        data = r.json()
 
         # Merge multi-choice responses (Copilot Pro Claude quirk)
         content = ""
         tool_calls: list[ToolCall] = []
         finish_reason = "stop"
 
-        for choice in response.choices:
-            if choice.message.content:
-                content = choice.message.content
-            if choice.message.tool_calls:
-                for tc in choice.message.tool_calls:
-                    tool_calls.append(ToolCall(
-                        id=tc.id,
-                        name=tc.function.name,
-                        arguments=json.loads(tc.function.arguments),
-                    ))
-            if choice.finish_reason:
-                finish_reason = choice.finish_reason
+        for choice in data.get("choices", []):
+            msg = choice.get("message", {})
+            if msg.get("content"):
+                content = msg["content"]
+            for tc in msg.get("tool_calls", []):
+                func = tc.get("function", {})
+                args_str = func.get("arguments", "{}")
+                try:
+                    args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                except json.JSONDecodeError:
+                    args = {"raw": args_str}
+                tool_calls.append(ToolCall(
+                    id=tc.get("id", ""),
+                    name=func.get("name", ""),
+                    arguments=args,
+                ))
+            if choice.get("finish_reason"):
+                finish_reason = choice["finish_reason"]
 
-        usage = response.usage
+        usage = data.get("usage", {})
+        in_tokens = usage.get("prompt_tokens", 0)
+        out_tokens = usage.get("completion_tokens", 0)
         self._total_requests += 1
-        self._total_input_tokens += usage.prompt_tokens if usage else 0
-        self._total_output_tokens += usage.completion_tokens if usage else 0
+        self._total_input_tokens += in_tokens
+        self._total_output_tokens += out_tokens
 
         # Fallback: if no API tool_calls but text contains XML tool invocations
         # (Claude models on Copilot Pro hallucinate XML when prompts are long)
@@ -839,35 +928,24 @@ class CopilotProProvider(GPTProvider):
                     r"<(?:function_calls|invoke|anythingllm)", content, maxsplit=1
                 )[0].strip()
 
+        # Build raw_message for agent loop feedback
+        raw_msg = None
+        if tool_calls:
+            raw_msg = {"role": "assistant", "content": content or None, "tool_calls": [
+                {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                for tc in tool_calls
+            ]}
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
-            input_tokens=usage.prompt_tokens if usage else 0,
-            output_tokens=usage.completion_tokens if usage else 0,
+            input_tokens=in_tokens,
+            output_tokens=out_tokens,
             model=self.model,
             latency_ms=latency,
-            raw_message=self._build_merged_raw(response.choices) if tool_calls else None,
+            raw_message=raw_msg,
         )
-
-    @staticmethod
-    def _build_merged_raw(choices) -> dict:
-        """Build a merged raw message from multi-choice response."""
-        merged = {"role": "assistant", "content": None, "tool_calls": []}
-        for choice in choices:
-            if choice.message.content:
-                merged["content"] = choice.message.content
-            if choice.message.tool_calls:
-                for tc in choice.message.tool_calls:
-                    merged["tool_calls"].append({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    })
-        return merged
 
     @staticmethod
     def _parse_xml_tool_calls(text: str) -> list[ToolCall]:
@@ -979,7 +1057,7 @@ class GeminiProvider(GPTProvider):
                         "GeminiProvider: fell back to %s (original: %s)", candidate, original
                     )
                 return response
-            except openai.RateLimitError as e:
+            except _ensure_openai().RateLimitError as e:
                 last_exc = e
                 self.model = original  # restore before next try
                 import logging
