@@ -12,7 +12,6 @@ from typing import Any
 
 from firm.bounty.vulnerability import Vulnerability, VulnSeverity
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------

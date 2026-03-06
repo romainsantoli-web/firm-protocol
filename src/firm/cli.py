@@ -36,9 +36,9 @@ import textwrap
 from pathlib import Path
 from typing import Any
 
-from firm import __version__, save_firm, load_firm
-from firm.runtime import Firm
+from firm import __version__, load_firm, save_firm
 from firm.core.types import VoteChoice
+from firm.runtime import Firm
 
 # ── State persistence ────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ def cmd_vote(args: argparse.Namespace) -> None:
     if choice_str not in choice_map:
         print(f"Error: choice must be approve/reject/abstain, got '{args.choice}'", file=sys.stderr)
         sys.exit(1)
-    vote = firm.vote(args.proposal, args.agent, choice_str)
+    firm.vote(args.proposal, args.agent, choice_str)
     print(f"Vote recorded: {args.agent} → {choice_str} on {args.proposal}")
 
 
@@ -211,7 +211,7 @@ def cmd_role_define(args: argparse.Namespace) -> None:
 def cmd_role_assign(args: argparse.Namespace) -> None:
     """Assign a role to an agent."""
     firm = _get_firm()
-    assignment = firm.assign_role(args.agent, args.role)
+    firm.assign_role(args.agent, args.role)
     print(f"Role '{args.role}' assigned to {args.agent}")
 
 
@@ -241,7 +241,7 @@ def cmd_audit(args: argparse.Namespace) -> None:
     """Run a full organization audit."""
     firm = _get_firm()
     report = firm.run_audit()
-    print(f"═══ Audit Report ═══")
+    print("═══ Audit Report ═══")
     print(f"  Generated:  {report.generated_at}")
     print(f"  Chain valid: {'✓' if report.chain_valid else '✗'}")
     print(f"  Findings:   {len(report.findings)}")
@@ -462,8 +462,8 @@ def cmd_bounty_agents(args: argparse.Namespace) -> None:
 
 def cmd_bounty_init(args: argparse.Namespace) -> None:
     """Initialise a bounty campaign from a scope YAML file."""
-    from firm.bounty.scope import TargetScope
     from firm.bounty.factory import create_bounty_firm
+    from firm.bounty.scope import TargetScope
 
     scope_path = Path(args.scope_file)
     if not scope_path.exists():
@@ -508,8 +508,8 @@ def cmd_bounty_scope(args: argparse.Namespace) -> None:
 def cmd_bounty_campaign(args: argparse.Namespace) -> None:
     """Show campaign status or run a campaign."""
     from firm.bounty.campaign import Campaign
-    from firm.bounty.scope import TargetScope
     from firm.bounty.factory import create_bounty_firm
+    from firm.bounty.scope import TargetScope
 
     if args.bounty_action == "status":
         c = Campaign(programme_handle=args.handle or "unknown")

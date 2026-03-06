@@ -4,14 +4,11 @@ test_cli — Tests for the FIRM Protocol CLI.
 Tests the CLI entry point by calling main(argv=[...]) and capturing stdout.
 """
 
-import json
-from io import StringIO
-from unittest import mock
 
 import pytest
 
-from firm.cli import main, _firm, build_parser
 import firm.cli as cli_module
+from firm.cli import build_parser, main
 
 
 @pytest.fixture(autouse=True)
@@ -448,7 +445,7 @@ class TestCLIRepl:
 
         agents = cli_module._firm.get_agents()
         ceo = [a for a in agents if a.name == "CEO"][0]
-        dev = [a for a in agents if a.name == "Dev"][0]
+        [a for a in agents if a.name == "Dev"][0]
         inputs2 = iter([
             f"propose {ceo.id} NewRule A new governance rule",
             "quit",

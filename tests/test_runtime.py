@@ -2,9 +2,9 @@
 
 import pytest
 
-from firm.runtime import Firm
 from firm.core.reputation import ReputationAttestation
 from firm.core.types import AgentId, AgentStatus, FirmId, ProposalStatus
+from firm.runtime import Firm
 
 
 class TestFirmCreation:
@@ -39,7 +39,7 @@ class TestAgentManagement:
 
     def test_get_agents_active_only(self):
         firm = Firm(name="test")
-        a1 = firm.add_agent("active")
+        firm.add_agent("active")
         a2 = firm.add_agent("suspended")
         a2.suspend("test")
         assert len(firm.get_agents(active_only=True)) == 1
@@ -209,7 +209,7 @@ class TestRoleFluidity:
         firm = Firm(name="test")
         firm.define_role("deployer", min_authority=0.4)
         agent = firm.add_agent("dev", authority=0.6)
-        assignment = firm.assign_role(agent.id, "deployer")
+        firm.assign_role(agent.id, "deployer")
         assert agent.has_role("deployer")
 
     def test_assign_role_unknown_agent(self):
@@ -243,7 +243,7 @@ class TestCollectiveMemory:
     def test_contribute_and_recall(self):
         firm = Firm(name="test")
         agent = firm.add_agent("researcher", authority=0.7)
-        entry = firm.contribute_memory(agent.id, "Python 3.12 is out", ["python", "releases"])
+        firm.contribute_memory(agent.id, "Python 3.12 is out", ["python", "releases"])
         results = firm.recall_memory(["python"])
         assert len(results) >= 1
         assert results[0].content == "Python 3.12 is out"

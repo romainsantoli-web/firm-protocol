@@ -6,12 +6,10 @@
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
 
 import pytest
 
-from firm.cli import main, build_parser
-
+from firm.cli import build_parser, main
 
 # ── Parser tests ─────────────────────────────────────────────────────────────
 

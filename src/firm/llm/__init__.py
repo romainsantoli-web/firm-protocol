@@ -5,34 +5,34 @@ Connects real LLMs (Claude, GPT, Mistral, Copilot) to FIRM's authority/governanc
 system, with real tools (git, terminal, file, HTTP) and measurable outcomes.
 """
 
+from firm.llm.agent import (
+    AgentConfig,
+    LLMAgent,
+    create_llm_agent,
+)
+from firm.llm.executor import (
+    ExecutionResult,
+    ExecutionStatus,
+    TaskExecutor,
+)
 from firm.llm.providers import (
-    LLMProvider,
+    ClaudeProvider,
+    CopilotProvider,
+    GPTProvider,
     LLMMessage,
+    LLMProvider,
     LLMResponse,
+    MistralProvider,
     ToolCall,
     ToolDefinition,
-    ClaudeProvider,
-    GPTProvider,
-    MistralProvider,
-    CopilotProvider,
     get_provider,
 )
 from firm.llm.tools import (
-    Tool,
-    ToolResult,
-    ToolKit,
     BUILTIN_TOOLS,
+    Tool,
+    ToolKit,
+    ToolResult,
     create_builtin_toolkit,
-)
-from firm.llm.executor import (
-    TaskExecutor,
-    ExecutionResult,
-    ExecutionStatus,
-)
-from firm.llm.agent import (
-    LLMAgent,
-    AgentConfig,
-    create_llm_agent,
 )
 
 __all__ = [

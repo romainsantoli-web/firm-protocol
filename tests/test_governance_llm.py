@@ -1,7 +1,9 @@
 import pytest
-from firm.core.governance import GovernanceEngine, Proposal, Vote, SimulationResult
-from firm.core.types import ProposalStatus, VoteChoice
+
 from firm.core.agent import Agent
+from firm.core.governance import GovernanceEngine
+from firm.core.types import ProposalStatus, VoteChoice
+
 
 def test_governance_engine_initialization():
     engine = GovernanceEngine()

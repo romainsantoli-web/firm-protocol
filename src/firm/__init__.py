@@ -19,40 +19,40 @@ from firm.core.agent import Agent, AgentRole
 from firm.core.audit import AuditEngine, AuditFinding, AuditReport
 from firm.core.authority import AuthorityEngine
 from firm.core.constitution import ConstitutionalAgent, Invariant
+from firm.core.events import Event, EventBus
 from firm.core.evolution import EvolutionEngine, EvolutionProposal, ParameterChange
 from firm.core.federation import (
+    AgentSecondment,
     FederationEngine,
     FederationMessage,
-    AgentSecondment,
     PeerFirm,
 )
 from firm.core.governance import GovernanceEngine, Proposal, Vote
 from firm.core.human import HumanOverride, OverrideEvent
-from firm.core.ledger import ResponsibilityLedger, LedgerEntry
-from firm.core.market import MarketEngine, MarketTask, MarketBid, Settlement
+from firm.core.ledger import LedgerEntry, ResponsibilityLedger
+from firm.core.market import MarketBid, MarketEngine, MarketTask, Settlement
 from firm.core.memory import MemoryEngine, MemoryEntry
-from firm.core.meta import MetaConstitutional, Amendment
+from firm.core.meta import Amendment, MetaConstitutional
+from firm.core.plugins import FirmPlugin, PluginManager
 from firm.core.prediction import (
+    MarketStatus,
+    Position,
+    PositionSide,
     PredictionEngine,
     PredictionMarket,
     PredictionSettlement,
-    Position,
-    MarketStatus,
-    PositionSide,
 )
 from firm.core.reputation import (
-    ReputationBridge,
-    ReputationAttestation,
     ImportedReputation,
     PredictionAccuracyAttestation,
+    ReputationAttestation,
+    ReputationBridge,
     global_authority,
 )
-from firm.core.roles import RoleEngine, RoleDefinition, RoleAssignment
-from firm.core.spawn import SpawnEngine, SpawnEvent, AutoRestructurer, RestructureRecommendation
+from firm.core.roles import RoleAssignment, RoleDefinition, RoleEngine
+from firm.core.serialization import diff_snapshots, load_firm, save_firm, snapshot
+from firm.core.spawn import AutoRestructurer, RestructureRecommendation, SpawnEngine, SpawnEvent
 from firm.core.types import AgentId, FirmId, Severity
-from firm.core.events import EventBus, Event
-from firm.core.plugins import PluginManager, FirmPlugin
-from firm.core.serialization import save_firm, load_firm, snapshot, diff_snapshots
 
 __all__ = [
     "Agent",

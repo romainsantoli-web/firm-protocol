@@ -1,13 +1,11 @@
 """Tests for Collective Memory Engine (Layer 4)."""
-import time
 import pytest
+
 from firm.core.memory import (
+    MIN_MEMORY_WEIGHT,
+    REINFORCEMENT_BOOST,
     MemoryEngine,
     MemoryEntry,
-    MemoryConflict,
-    REINFORCEMENT_BOOST,
-    CHALLENGE_PENALTY,
-    MIN_MEMORY_WEIGHT,
 )
 from firm.core.types import AgentId
 
@@ -64,7 +62,7 @@ class TestMemoryRecall:
 
     def test_recall_min_weight(self):
         engine = MemoryEngine()
-        entry = engine.contribute("weak", ["tag"], AgentId("a1"), 0.005)
+        engine.contribute("weak", ["tag"], AgentId("a1"), 0.005)
         # Weight is 0.005, below default min_weight
         results = engine.recall(["tag"], min_weight=0.01)
         assert len(results) == 0
@@ -191,7 +189,7 @@ class TestMemoryConflicts:
 
     def test_resolve_a_wins(self):
         engine = MemoryEngine()
-        m1 = engine.contribute("fact A", ["topic", "debate"], AgentId("a1"), 0.8)
+        engine.contribute("fact A", ["topic", "debate"], AgentId("a1"), 0.8)
         m2 = engine.contribute("fact B", ["topic", "debate"], AgentId("a2"), 0.3)
         conflicts = engine.get_conflicts()
         assert len(conflicts) == 1
@@ -201,7 +199,7 @@ class TestMemoryConflicts:
     def test_resolve_b_wins(self):
         engine = MemoryEngine()
         m1 = engine.contribute("fact A", ["topic", "debate"], AgentId("a1"), 0.8)
-        m2 = engine.contribute("fact B", ["topic", "debate"], AgentId("a2"), 0.3)
+        engine.contribute("fact B", ["topic", "debate"], AgentId("a2"), 0.3)
         engine.resolve_conflict(0, "b_wins")
         assert engine.get_memory(m1.id) is None  # a removed
 

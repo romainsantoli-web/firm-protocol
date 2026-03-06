@@ -1,9 +1,8 @@
 """Tests for firm.core.agent"""
 
-import pytest
 
 from firm.core.agent import Agent, AgentRole
-from firm.core.types import AgentId, AgentStatus
+from firm.core.types import AgentStatus
 
 
 class TestAgentRole:

@@ -4,19 +4,15 @@ Tests for firm.core.serialization — Save / Load FIRM State
 
 import json
 import time
-from pathlib import Path
-
-import pytest
 
 from firm.core.serialization import (
     SERIALIZATION_VERSION,
-    save_firm,
-    load_firm,
-    snapshot,
     diff_snapshots,
+    load_firm,
+    save_firm,
+    snapshot,
 )
 from firm.runtime import Firm
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +20,7 @@ from firm.runtime import Firm
 def _build_firm() -> Firm:
     """Create a FIRM with agents, memories, and roles for testing."""
     firm = Firm(name="serial-test")
-    ceo = firm.add_agent("ceo", authority=0.9)
+    firm.add_agent("ceo", authority=0.9)
     dev = firm.add_agent("dev", authority=0.5)
 
     # Add a role
@@ -116,7 +112,7 @@ class TestSaveFirm:
     def test_save_to_file(self, tmp_path):
         firm = _build_firm()
         path = tmp_path / "firm.json"
-        state = save_firm(firm, path)
+        save_firm(firm, path)
         assert path.exists()
         loaded = json.loads(path.read_text())
         assert loaded["name"] == "serial-test"
@@ -363,7 +359,7 @@ class TestDiffSnapshots:
 
     def test_diff_constitution_invariant_change(self):
         """Track invariant count changes between two different firms."""
-        from firm.core.constitution import Invariant, ALL_INVARIANTS
+        from firm.core.constitution import ALL_INVARIANTS, Invariant
 
         firm1 = Firm(name="const1")
         s1 = snapshot(firm1)

@@ -1,18 +1,13 @@
 """Tests for firm.core.evolution — Evolution Engine."""
 
-import time
 import pytest
 
 from firm.core.evolution import (
+    PARAMETER_BOUNDS,
     EvolutionEngine,
-    EvolutionProposal,
     EvolutionStatus,
     ParameterCategory,
     ParameterChange,
-    PARAMETER_BOUNDS,
-    MIN_AUTHORITY_TO_EVOLVE,
-    EVOLUTION_APPROVAL_RATIO,
-    PARAMETER_CHANGE_COOLDOWN,
 )
 from firm.core.types import AgentId
 

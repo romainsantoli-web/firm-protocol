@@ -9,9 +9,9 @@ Two-level dedup:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from firm.bounty.vulnerability import Vulnerability, VulnDatabase
+from firm.bounty.vulnerability import VulnDatabase, Vulnerability
 
 
 @dataclass

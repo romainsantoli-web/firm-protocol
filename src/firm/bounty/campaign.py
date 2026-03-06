@@ -15,7 +15,7 @@ from typing import Optional
 
 from firm.bounty.dedup import DeduplicationEngine
 from firm.bounty.triage import TriageDecision, TriagePipeline, TriageResult
-from firm.bounty.vulnerability import Vulnerability, VulnDatabase, VulnStatus
+from firm.bounty.vulnerability import VulnDatabase, Vulnerability, VulnStatus
 
 
 class CampaignPhase(str, Enum):

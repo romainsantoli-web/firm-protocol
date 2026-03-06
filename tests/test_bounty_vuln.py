@@ -3,7 +3,6 @@
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
-import pytest
 
 from firm.bounty.vulnerability import (
     AttackComplexity,
@@ -13,12 +12,10 @@ from firm.bounty.vulnerability import (
     PrivilegesRequired,
     Scope,
     UserInteraction,
-    Vulnerability,
     VulnDatabase,
+    Vulnerability,
     VulnSeverity,
-    VulnStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # CVSS 3.1

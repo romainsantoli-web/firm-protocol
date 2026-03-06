@@ -3,12 +3,10 @@ Tests for firm.core.events — Event Bus (pub/sub observer pattern)
 """
 
 import time
-from unittest.mock import MagicMock
 
 import pytest
 
 from firm.core.events import Event, EventBus
-
 
 # ── Event dataclass ──────────────────────────────────────────────────────────
 
@@ -296,7 +294,7 @@ class TestEventBusFirmIntegration:
         firm = Firm(name="evt-test")
         received = []
         firm.events.subscribe("agent.added", lambda e: received.append(e))
-        agent = firm.add_agent("worker", authority=0.6)
+        firm.add_agent("worker", authority=0.6)
         assert len(received) == 1
         assert received[0].data["name"] == "worker"
         assert received[0].data["authority"] == 0.6

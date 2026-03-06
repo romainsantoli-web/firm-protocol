@@ -3,13 +3,13 @@
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
-import pytest
-import time
 
-from firm.bounty.campaign import Campaign, CampaignPhase, CampaignStats
+import pytest
+
+from firm.bounty.campaign import Campaign, CampaignPhase
 from firm.bounty.dedup import DeduplicationEngine
-from firm.bounty.triage import TriageDecision, TriagePipeline
-from firm.bounty.vulnerability import Vulnerability, VulnDatabase, VulnSeverity, VulnStatus
+from firm.bounty.triage import TriagePipeline
+from firm.bounty.vulnerability import VulnDatabase, Vulnerability, VulnStatus
 
 
 @pytest.fixture

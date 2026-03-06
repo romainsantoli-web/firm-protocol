@@ -10,18 +10,15 @@ Python ``httpx`` pip package.
 
 from __future__ import annotations
 
-import asyncio
-import json
 import shutil
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from firm.bounty.scope import ScopeEnforcer
-
 
 # ---------------------------------------------------------------------------
 # Rate limiter (token-bucket per target)
@@ -278,8 +275,8 @@ def make_scanning_tools(
             return f"BLOCKED: {target} is not in scope."
         if not limiter.allow(target):
             return "RATE LIMITED — retry later."
-        import ssl
         import socket
+        import ssl
         findings: list[str] = []
         try:
             ctx = ssl.create_default_context()

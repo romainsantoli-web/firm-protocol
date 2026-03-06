@@ -10,8 +10,7 @@ dedup engine, triage pipeline, and reward engine.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from firm.bounty.dedup import DeduplicationEngine
 from firm.bounty.reward import RewardEngine
@@ -19,7 +18,6 @@ from firm.bounty.scope import ScopeEnforcer, TargetScope
 from firm.bounty.tools.scanner import RateLimiter, make_bounty_tools
 from firm.bounty.triage import TriagePipeline
 from firm.bounty.vulnerability import VulnDatabase
-
 
 # ---------------------------------------------------------------------------
 # Agent specs

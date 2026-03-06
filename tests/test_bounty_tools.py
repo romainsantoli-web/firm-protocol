@@ -6,8 +6,9 @@ CLI tools (all subprocess calls are mocked).
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from firm.bounty.scope import Asset, AssetType, ScopeEnforcer, TargetScope
 from firm.bounty.tools.scanner import (
@@ -17,7 +18,6 @@ from firm.bounty.tools.scanner import (
     make_report_tools,
     make_scanning_tools,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

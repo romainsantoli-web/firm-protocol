@@ -8,13 +8,8 @@ from firm.core.authority import (
     AUTHORITY_MIN,
     DEFAULT_DECAY,
     DEFAULT_LEARNING_RATE,
-    THRESHOLD_PROBATION,
-    THRESHOLD_PROPOSE,
-    THRESHOLD_TERMINATE,
-    THRESHOLD_VOTE,
     AuthorityEngine,
 )
-from firm.core.types import AgentId
 
 
 class TestAuthorityComputation:
@@ -107,7 +102,7 @@ class TestAuthorityDecay:
     def test_decay_respects_minimum(self):
         engine = AuthorityEngine(decay=0.5)
         agent = Agent(authority=0.01)
-        changes = engine.apply_decay([agent])
+        engine.apply_decay([agent])
         assert agent.authority >= AUTHORITY_MIN
 
 

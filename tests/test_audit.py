@@ -1,11 +1,9 @@
 """Tests for Audit Trail (Layer 10)."""
-import pytest
 from firm.core.agent import Agent
 from firm.core.audit import (
     AuditEngine,
     AuditFinding,
     AuditReport,
-    AUTHORITY_SPIKE_THRESHOLD,
 )
 from firm.core.authority import AuthorityEngine
 from firm.core.ledger import ResponsibilityLedger

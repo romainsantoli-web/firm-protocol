@@ -24,14 +24,13 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import math
 import time
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from firm.core.types import AgentId, FirmId, Severity
+from firm.core.types import AgentId, FirmId
 
 logger = logging.getLogger(__name__)
 

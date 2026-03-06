@@ -24,7 +24,7 @@ from typing import Any
 
 from firm.core.agent import Agent
 from firm.core.authority import AuthorityEngine
-from firm.core.ledger import LedgerEntry, ResponsibilityLedger
+from firm.core.ledger import ResponsibilityLedger
 from firm.core.types import AgentId, LedgerAction, Severity
 
 logger = logging.getLogger(__name__)

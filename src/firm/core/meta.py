@@ -37,10 +37,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from firm.core.constitution import (
-    Invariant,
     ConstitutionalAgent,
-    INVARIANT_HUMAN_CONTROL,
-    INVARIANT_EVOLUTION_PRESERVED,
+    Invariant,
 )
 from firm.core.types import AgentId
 
