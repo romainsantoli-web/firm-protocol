@@ -497,27 +497,29 @@ The MCP bridge was tested end-to-end on **this repository** (`firm-protocol/src/
 
 ### ✅ External Validation — Security scan on crewAI (1004 Python files)
 
-The MCP bridge was also tested on the **crewAI** open-source repository ([github.com/crewAIInc/crewAI](https://github.com/crewAIInc/crewAI)):
+The MCP bridge was validated on **5 major open-source AI frameworks** — 8,785 files scanned, 300 findings, **0 CRITICAL vulnerabilities**:
 
-<table>
-<tr><th>Step</th><th>Result</th><th>Status</th></tr>
-<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
-<tr><td><b>Firm Organization</b></td><td><code>crewai-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
-<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
-<tr><td><b>Scan Execution</b></td><td><code>firm_security_scan</code> → <b>412 files scanned</b> in 0.3s</td><td>✅</td></tr>
-<tr><td><b>Findings</b></td><td>0 CRITICAL · <b>5 HIGH</b> · 12 MEDIUM — 17 total</td><td>✅</td></tr>
-<tr><td><b>Report Generation</b></td><td>JSON + Markdown reports generated (OWASP-aligned)</td><td>✅</td></tr>
-</table>
+| Framework | Files | Findings | CRITICAL | Report |
+|-----------|------:|----------|---------:|--------|
+| [crewAI](https://github.com/crewAIInc/crewAI) | 412 | 17 | 0 | [Report](scan-reports/REPORT-crewai.md) |
+| [LangGraph + LangChain](https://github.com/langchain-ai) | 2,205 | 42 | 0 | [Report](scan-reports/REPORT-langchain.md) |
+| [Microsoft AutoGen](https://github.com/microsoft/autogen) | 355 | 15 | 0 | [Report](scan-reports/REPORT-autogen.md) |
+| [designing-multiagent-systems](https://github.com/victordibia/designing-multiagent-systems) | 219 | 2 | 0 | [Report](scan-reports/REPORT-dmas.md) |
+| [OpenClaw](https://github.com/openclaw/openclaw) (self-scan) | 5,594 | 224 | 0 | [Report](scan-reports/REPORT-openclaw.md) |
+| **Total** | **8,785** | **300** | **0** | |
 
-**Key findings on crewAI:**
-- 5 HIGH: String concatenation in queries (`memory/encoding_flow.py`, `memory/storage/lancedb_storage.py`, `agent/utils.py`, `cli/memory_tui.py`, `utilities/string_utils.py`)
-- 12 MEDIUM: Raw SQL call patterns in `flow/visualization/assets/interactive.js`
-- **Verdict: ✅ PASS** — no critical vulnerabilities
-
-> Reproduction: `python examples/crewai_security_scan.py` (requires MCP server on port 8012)
+> Full reports, reproduction scripts, and methodology: **[scan-reports/](scan-reports/README.md)**
 
 <details>
-<summary><b>📋 Reproduction script</b></summary>
+<summary><b>📋 Example: run a scan on crewAI</b></summary>
+
+```bash
+# Clone target
+git clone --depth 1 https://github.com/crewAIInc/crewAI.git /tmp/crewai
+
+# Run scan (requires MCP server on port 8012)
+python scan-reports/crewai_security_scan.py
+```
 
 ```python
 from firm.runtime import Firm
@@ -528,169 +530,16 @@ status = check_mcp_server()
 assert status["ok"], f"MCP unreachable: {status['error']}"
 print(f"✅ {status['tool_count']} tools available")
 
-# 2. Create security toolkit & run a scan on this project
+# 2. Create security toolkit & run a scan
 kit = create_mcp_toolkit(categories=["security"])
 result = kit.execute("firm_security_scan", {
-    "target_path": "src/firm"
+    "target_path": "/tmp/crewai"
 })
 print(f"Scan: success={result.success}")
 print(result.output[:500])
-
-# 3. Verify all categories
-for cat in ["memory", "a2a", "compliance", "delivery"]:
-    n = len(create_mcp_toolkit(categories=[cat]).list_tools())
-    print(f"  {cat}: {n} tools")
 ```
 
 </details>
-
-### ✅ External Validation — Security scan on LangGraph + LangChain (2205 Python files)
-
-The MCP bridge was tested at scale on both **LangGraph** and **LangChain** repositories ([langchain-ai](https://github.com/langchain-ai)):
-
-<table>
-<tr><th>Step</th><th>Result</th><th>Status</th></tr>
-<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
-<tr><td><b>Firm Organization</b></td><td><code>langchain-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
-<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
-<tr><td><b>Targets Scanned</b></td><td><b>6 sub-modules</b> across 2 repos</td><td>✅</td></tr>
-<tr><td><b>Total Files</b></td><td><b>2205 files</b> scanned in ~1.0s</td><td>✅</td></tr>
-<tr><td><b>Total Findings</b></td><td>0 CRITICAL · <b>33 HIGH</b> · 9 MEDIUM — <b>42 total</b></td><td>✅</td></tr>
-<tr><td><b>Report Generation</b></td><td>6 JSON + 6 Markdown reports generated (OWASP-aligned)</td><td>✅</td></tr>
-</table>
-
-**Breakdown by target:**
-
-| Target | Files | CRIT | HIGH | MED | Total | Verdict |
-|--------|------:|-----:|-----:|----:|------:|---------|
-| LangGraph (core) | 113 | 0 | 2 | 0 | 2 | ✅ PASS |
-| LangGraph Checkpoint | 24 | 0 | 1 | 0 | 1 | ✅ PASS |
-| LangGraph CLI | 51 | 0 | 4 | 0 | 4 | ✅ PASS |
-| LangChain Core | 318 | 0 | 16 | 9 | 25 | ✅ PASS |
-| LangChain (main) | 1410 | 0 | 5 | 0 | 5 | ✅ PASS |
-| LangChain Partners | 289 | 0 | 5 | 0 | 5 | ✅ PASS |
-| **TOTAL** | **2205** | **0** | **33** | **9** | **42** | ✅ |
-
-**Key findings:**
-- **33 HIGH:** Mostly string concatenation in queries — pattern matches in test files (`test_pregel.py`, `test_utils.py`, `test_config.py`) and production code (`constitutional_ai/base.py`, `flare/base.py`, `anthropic_tools.py`)
-- **9 MEDIUM:** Raw SQL call patterns in `langchain_core/runnables/graph*.py` and `output_parsers/`
-- **0 CRITICAL vulnerabilities** across all 2205 files
-
-> Reproduction: `python examples/langchain_security_scan.py` (requires MCP server on port 8012 + cloned repos in `/tmp/`)
-
-### ✅ External Validation — Security scan on Microsoft AutoGen (355 Python files)
-
-[**AutoGen**](https://github.com/microsoft/autogen) by **Microsoft Research** (lead contributors: [Victor Dibia](https://github.com/victordibia), [Chi Wang](https://github.com/sonichi)) is one of the most popular frameworks for multi-agent collaboration. We scanned 5 sub-packages:
-
-<table>
-<tr><th>Step</th><th>Result</th><th>Status</th></tr>
-<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
-<tr><td><b>Firm Organization</b></td><td><code>autogen-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
-<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
-<tr><td><b>Targets Scanned</b></td><td><b>5 sub-modules</b> (core, agentchat, ext, studio, samples)</td><td>✅</td></tr>
-<tr><td><b>Total Files</b></td><td><b>355 files</b> scanned in ~0.3s</td><td>✅</td></tr>
-<tr><td><b>Total Findings</b></td><td>0 CRITICAL · <b>13 HIGH</b> · 2 MEDIUM — <b>15 total</b></td><td>✅</td></tr>
-<tr><td><b>Report Generation</b></td><td>5 JSON reports generated (OWASP-aligned)</td><td>✅</td></tr>
-</table>
-
-**Breakdown by target:**
-
-| Target | Files | CRIT | HIGH | MED | Total | Verdict |
-|--------|------:|-----:|-----:|----:|------:|---------|
-| AutoGen Core | 92 | 0 | 3 | 0 | 3 | ✅ PASS |
-| AutoGen AgentChat | 48 | 0 | 2 | 0 | 2 | ✅ PASS |
-| AutoGen Extensions | 77 | 0 | 4 | 2 | 6 | ✅ PASS |
-| AutoGen Studio | 79 | 0 | 0 | 0 | 0 | ✅ PASS |
-| AutoGen Samples | 59 | 0 | 4 | 0 | 4 | ✅ PASS |
-| **TOTAL** | **355** | **0** | **13** | **2** | **15** | ✅ |
-
-**Key findings:**
-- **13 HIGH:** String concatenation in queries — `code_executor/_func_with_reqs.py`, `_head_and_tail_chat_completion_context.py`, `task_centric_memory/` tests and samples, `_common.py` code executor
-- **2 MEDIUM:** Raw SQL call patterns in Jupyter code executor tests
-- **AutoGen Studio: 0 findings** — cleanest sub-module (79 files, zero issues)
-- **0 CRITICAL vulnerabilities** across all 355 files
-
-> Reproduction: `python examples/autogen_security_scan.py` (requires MCP server on port 8012 + `git clone --depth 1 https://github.com/microsoft/autogen.git /tmp/autogen`)
-
-### ✅ External Validation — Security scan on designing-multiagent-systems (219 Python files)
-
-[**designing-multiagent-systems**](https://github.com/victordibia/designing-multiagent-systems) by [**Victor Dibia**](https://github.com/victordibia) (Microsoft Research, AutoGen lead contributor) — companion repo for his book/course on designing multi-agent AI systems. Includes **PicoAgents**, a lightweight agent library.
-
-<table>
-<tr><th>Step</th><th>Result</th><th>Status</th></tr>
-<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
-<tr><td><b>Firm Organization</b></td><td><code>dmas-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
-<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
-<tr><td><b>Targets Scanned</b></td><td><b>4 sub-modules</b> (picoagents, course, examples, research)</td><td>✅</td></tr>
-<tr><td><b>Total Files</b></td><td><b>219 files</b> scanned in ~0.2s</td><td>✅</td></tr>
-<tr><td><b>Total Findings</b></td><td>0 CRITICAL · <b>1 HIGH</b> · 1 MEDIUM — <b>2 total</b></td><td>✅</td></tr>
-</table>
-
-**Breakdown by target:**
-
-| Target | Files | CRIT | HIGH | MED | Total | Verdict |
-|--------|------:|-----:|-----:|----:|------:|---------|
-| PicoAgents (lib) | 105 | 0 | 1 | 0 | 1 | ✅ PASS |
-| Course Samples | 33 | 0 | 0 | 1 | 1 | ✅ PASS |
-| Examples | 77 | 0 | 0 | 0 | 0 | ✅ PASS |
-| Research | 4 | 0 | 0 | 0 | 0 | ✅ PASS |
-| **TOTAL** | **219** | **0** | **1** | **1** | **2** | ✅ |
-
-**Key findings:**
-- **1 HIGH:** String concatenation in `tests/test_orchestrator.py:203`
-- **1 MEDIUM:** Raw SQL call pattern in `course/samples/book_generator/autogen_core/tools.py:35`
-- **Examples + Research: 0 findings** — 81 files scanned with zero issues
-- **0 CRITICAL vulnerabilities** — near-perfect security posture
-
-> Reproduction: `python examples/dmas_security_scan.py` (requires MCP server on port 8012 + `git clone --depth 1 https://github.com/victordibia/designing-multiagent-systems.git /tmp/dmas`)
-
-### ✅ External Validation — OpenClaw Self-Scan (5,594 files)
-
-[**OpenClaw**](https://github.com/openclaw/openclaw) is the platform these MCP tools run on — an open-source AI agent operating system supporting 14+ messaging channels (Telegram, Slack, Discord, LINE, IRC, etc.), browser automation, and multi-agent orchestration. Scanning OpenClaw with its own tools is the ultimate self-referential validation.
-
-**Scan date:** 6 March 2026 · **FIRM MCP tools used:** 14 specialized scans
-
-| Scan | Tool | Severity | Findings |
-|------|------|----------|----------|
-| Code security (depth 5) | `firm_security_scan` | — | 224 findings (117 HIGH, 107 MEDIUM, **0 CRITICAL**) |
-| Sandbox mode | `firm_sandbox_audit` | CRITICAL | sandbox.mode defaults to `off` — RCE risk |
-| Session secrets | `firm_session_config_check` | HIGH | `SESSION_SECRET` not set in docker-compose.yml |
-| Rate limiting | `firm_rate_limit_check` | MEDIUM | No rate limiter detected |
-| CI pipeline | `firm_ci_pipeline_check` | OK | 8 workflows, all required steps (lint/test/secrets) ✓ |
-| Channel audit | `firm_channel_audit` | MEDIUM | 4 channels detected, Discord thread lifecycle not configured |
-| Workspace integrity | `firm_workspace_integrity_check` | MEDIUM | SOUL.md missing, 28.6 MB git pack file |
-| Doc sync | `firm_doc_sync_check` | OK | 75 deps checked, 0 desynced |
-| Browser automation | `firm_browser_context_check` | WARNING | Playwright detected, no config file |
-| Node.js version | `firm_node_version_check` | OK | v25.6.1 (meets ≥22.12.0) |
-| Plugin SDK | `firm_plugin_sdk_check` | INFO | No plugins configured |
-| Prompt injection | `firm_prompt_injection_batch` | — | 16-pattern engine operational (2/5 test payloads caught) |
-| Elicitation | `firm_elicitation_audit` | CRITICAL | No elicitation capability declared (MCP 2025-11-25) |
-| Icon metadata | `firm_icon_metadata_audit` | OK | Compliant |
-
-**Key findings across 5,594 files:**
-- **0 CRITICAL code vulnerabilities** in the codebase itself
-- **224 pattern matches** — mostly template-literal false positives in UI rendering (`usage-render-details.ts`) and IRC raw commands (`client.ts`)
-- **Sandbox defaults need hardening** — `sandbox.mode: off` exposes the host to any agent session
-- **Session secret not persistent** — container restart regenerates session secret
-- **CI pipeline is solid** — 8 GitHub Actions workflows covering lint, test, and secrets scanning
-- **MCP 2025-11-25 compliance gap** — elicitation capability not declared
-
-> Reproduction: `python examples/openclaw_security_scan.py` (requires MCP server on port 8012 + `git clone --depth 1 https://github.com/openclaw/openclaw.git /tmp/openclaw`)
-
----
-
-### 📊 Combined External Validation Results
-
-| Framework | Files | Findings | CRITICAL | HIGH | MEDIUM |
-|-----------|------:|----------|---------:|-----:|-------:|
-| crewAI | 412 | 17 | 0 | 13 | 4 |
-| LangGraph + LangChain | 2,205 | 42 | 0 | 33 | 9 |
-| Microsoft AutoGen | 355 | 15 | 0 | 13 | 2 |
-| designing-multiagent-systems | 219 | 2 | 0 | 1 | 1 |
-| **OpenClaw (self-scan)** | **5,594** | **224** | **0** | **117** | **107** |
-| **Total** | **8,785** | **300** | **0** | **177** | **123** |
-
-> **8,785 files scanned across 5 major AI frameworks — 0 CRITICAL vulnerabilities found.**
 
 ---
 
