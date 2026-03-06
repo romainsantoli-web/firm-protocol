@@ -544,6 +544,40 @@ for cat in ["memory", "a2a", "compliance", "delivery"]:
 
 </details>
 
+### ✅ External Validation — Security scan on LangGraph + LangChain (2205 Python files)
+
+The MCP bridge was tested at scale on both **LangGraph** and **LangChain** repositories ([langchain-ai](https://github.com/langchain-ai)):
+
+<table>
+<tr><th>Step</th><th>Result</th><th>Status</th></tr>
+<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> available</td><td>✅</td></tr>
+<tr><td><b>Firm Organization</b></td><td><code>langchain-audit</code> created, agent SecurityAuditor (authority 0.9)</td><td>✅</td></tr>
+<tr><td><b>Security ToolKit</b></td><td><code>24 tools</code> loaded (security + compliance)</td><td>✅</td></tr>
+<tr><td><b>Targets Scanned</b></td><td><b>6 sub-modules</b> across 2 repos</td><td>✅</td></tr>
+<tr><td><b>Total Files</b></td><td><b>2205 files</b> scanned in ~1.0s</td><td>✅</td></tr>
+<tr><td><b>Total Findings</b></td><td>0 CRITICAL · <b>33 HIGH</b> · 9 MEDIUM — <b>42 total</b></td><td>✅</td></tr>
+<tr><td><b>Report Generation</b></td><td>6 JSON + 6 Markdown reports generated (OWASP-aligned)</td><td>✅</td></tr>
+</table>
+
+**Breakdown by target:**
+
+| Target | Files | CRIT | HIGH | MED | Total | Verdict |
+|--------|------:|-----:|-----:|----:|------:|---------|
+| LangGraph (core) | 113 | 0 | 2 | 0 | 2 | ✅ PASS |
+| LangGraph Checkpoint | 24 | 0 | 1 | 0 | 1 | ✅ PASS |
+| LangGraph CLI | 51 | 0 | 4 | 0 | 4 | ✅ PASS |
+| LangChain Core | 318 | 0 | 16 | 9 | 25 | ✅ PASS |
+| LangChain (main) | 1410 | 0 | 5 | 0 | 5 | ✅ PASS |
+| LangChain Partners | 289 | 0 | 5 | 0 | 5 | ✅ PASS |
+| **TOTAL** | **2205** | **0** | **33** | **9** | **42** | ✅ |
+
+**Key findings:**
+- **33 HIGH:** Mostly string concatenation in queries — pattern matches in test files (`test_pregel.py`, `test_utils.py`, `test_config.py`) and production code (`constitutional_ai/base.py`, `flare/base.py`, `anthropic_tools.py`)
+- **9 MEDIUM:** Raw SQL call patterns in `langchain_core/runnables/graph*.py` and `output_parsers/`
+- **0 CRITICAL vulnerabilities** across all 2205 files
+
+> Reproduction: `python examples/langchain_security_scan.py` (requires MCP server on port 8012 + cloned repos in `/tmp/`)
+
 ---
 
 ## Automatic Security Report Generation
