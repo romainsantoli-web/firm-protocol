@@ -2,27 +2,38 @@
 firm.llm.mcp_bridge — Bridge between MCP ecosystem tools and FIRM protocol.
 
 Discovers MCP tools via JSON-RPC (tools/list) and wraps each one as a
-firm.llm.tools.Tool so that LLMAgent can use the full 138-tool ecosystem
-(security audit, hebbian memory, A2A, market research, etc.) natively.
+firm.llm.tools.Tool so that LLMAgent can use the full 138+21 tool ecosystem
+(security audit, hebbian memory, A2A, market research, semantic memory, etc.) natively.
+
+Supports two MCP servers:
+  - **OpenClaw** (143 tools) — JSON-RPC at http://127.0.0.1:8012/mcp
+  - **Memory OS AI** (21 tools) — direct Python import (SSE transport bypassed)
 
 Usage:
     from firm.runtime import Firm
     from firm.llm.agent import create_llm_agent
-    from firm.llm.mcp_bridge import create_mcp_toolkit, extend_agent_with_mcp
+    from firm.llm.mcp_bridge import (
+        create_mcp_toolkit, extend_agent_with_mcp,
+        create_memory_toolkit, extend_agent_with_memory,
+        extend_agent_with_all_mcp,
+    )
 
-    # Option 1 — get a standalone ToolKit
+    # Option 1 — OpenClaw tools only
     mcp_toolkit = create_mcp_toolkit()
-    tools = mcp_toolkit.list_tools()   # 138 Tool objects
+    tools = mcp_toolkit.list_tools()   # 143 Tool objects
 
-    # Option 2 — extend an existing LLMAgent
+    # Option 2 — Memory OS AI tools only
+    mem_toolkit = create_memory_toolkit()
+    tools = mem_toolkit.list_tools()   # 21 Tool objects
+
+    # Option 3 — ALL ecosystem tools (143 + 21 = 164)
     firm = Firm("my-startup")
     cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro", authority=0.8)
-    extend_agent_with_mcp(cto)  # adds all MCP tools to the agent's toolkit
-    result = cto.execute_task("Run a security audit on the workspace")
+    extend_agent_with_all_mcp(cto)  # adds 164 tools
 
-    # Option 3 — filter by category
-    security_kit = create_mcp_toolkit(filter_prefix="openclaw_security")
-    memory_kit   = create_mcp_toolkit(filter_prefix="openclaw_hebbian")
+    # Option 4 — filter by category
+    security_kit = create_mcp_toolkit(categories=["security"])
+    memory_kit   = create_memory_toolkit(filter_prefix="memory_search")
 
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
@@ -328,7 +339,7 @@ def extend_agent_with_mcp(
 
     count = 0
     for tool in mcp_toolkit.list_tools():
-        agent.toolkit.register(tool)
+        agent._toolkit.register(tool)
         count += 1
 
     logger.info("Extended agent '%s' with %d MCP tools", getattr(agent, "name", "?"), count)
@@ -363,3 +374,237 @@ def check_mcp_server(mcp_url: str | None = None) -> dict[str, Any]:
             "tool_count": 0,
             "error": str(exc),
         }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Memory OS AI bridge (21 tools — direct Python import, no SSE)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_memory_dispatch = None  # lazy import cache
+_memory_tools_cache: list[dict[str, Any]] | None = None
+
+
+def _get_memory_dispatch() -> Any:
+    """Import memory_os_ai._dispatch lazily."""
+    global _memory_dispatch
+    if _memory_dispatch is None:
+        try:
+            from memory_os_ai.server import _dispatch
+            _memory_dispatch = _dispatch
+        except ImportError as exc:
+            raise ImportError(
+                "memory-os-ai is not installed. "
+                "Install with: pip install memory-os-ai"
+            ) from exc
+    return _memory_dispatch
+
+
+def _list_memory_tools() -> list[dict[str, Any]]:
+    """Discover all tools from memory-os-ai (via direct import)."""
+    global _memory_tools_cache
+    if _memory_tools_cache is None:
+        try:
+            from memory_os_ai.server import TOOLS
+            _memory_tools_cache = list(TOOLS)
+        except ImportError:
+            _memory_tools_cache = []
+    return _memory_tools_cache
+
+
+def _call_memory_tool(tool_name: str, arguments: dict[str, Any]) -> ToolResult:
+    """Call a memory-os-ai tool directly via Python (no SSE round-trip)."""
+    try:
+        dispatch = _get_memory_dispatch()
+        # Validate via Pydantic if available
+        try:
+            from memory_os_ai.server import TOOL_MODELS
+            model_cls = TOOL_MODELS.get(tool_name)
+            if model_cls:
+                validated = model_cls(**arguments)
+                arguments = validated.model_dump()
+        except ImportError:
+            pass
+
+        result = dispatch(tool_name, arguments)
+        output = json.dumps(result, indent=2, ensure_ascii=False) if not isinstance(result, str) else result
+        is_error = isinstance(result, dict) and not result.get("ok", True)
+        return ToolResult(
+            success=not is_error,
+            output=output,
+            error="" if not is_error else output,
+        )
+    except Exception as exc:
+        return ToolResult(
+            success=False,
+            output="",
+            error=f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _wrap_memory_tool(tool_def: dict[str, Any]) -> Tool:
+    """Convert a memory-os-ai tool definition to a FIRM Tool."""
+    name = tool_def["name"]
+    description = tool_def.get("description", name)
+    input_schema = tool_def.get("inputSchema", {
+        "type": "object",
+        "properties": {},
+        "required": [],
+    })
+
+    def _execute(*, _tool_name: str = name, **kwargs: Any) -> ToolResult:
+        return _call_memory_tool(_tool_name, kwargs)
+
+    return Tool(
+        name=name,
+        description=f"[Memory] {description}",
+        parameters=input_schema,
+        execute=_execute,
+        dangerous=False,
+    )
+
+
+# Memory tool categories for filtering
+MEMORY_CATEGORIES: dict[str, list[str]] = {
+    "search": ["memory_search", "memory_get_context"],
+    "ingest": ["memory_ingest", "memory_list_documents", "memory_transcribe"],
+    "chat": ["memory_chat_sync", "memory_chat_save", "memory_chat_source",
+             "memory_chat_status", "memory_chat_auto_detect"],
+    "session": ["memory_session_brief", "memory_compact", "memory_status"],
+    "project": ["memory_project_link", "memory_project_unlink", "memory_project_list"],
+    "cloud": ["memory_cloud_configure", "memory_cloud_status", "memory_cloud_sync"],
+}
+
+
+def create_memory_toolkit(
+    filter_prefix: str = "",
+    categories: list[str] | None = None,
+    timeout: int = 30,
+) -> ToolKit:
+    """
+    Create a FIRM ToolKit with Memory OS AI tools (21 tools).
+
+    Args:
+        filter_prefix: Only include tools whose name starts with this prefix.
+        categories: Only include tools matching category prefixes.
+        timeout: ToolKit execution timeout.
+
+    Returns:
+        A ToolKit containing Tool objects wrapping memory-os-ai tools.
+    """
+    toolkit = ToolKit(timeout=timeout)
+
+    # Build prefix set from categories
+    prefixes: set[str] = set()
+    if categories:
+        for cat in categories:
+            cat_prefixes = MEMORY_CATEGORIES.get(cat)
+            if cat_prefixes:
+                prefixes.update(cat_prefixes)
+
+    mem_tools = _list_memory_tools()
+    logger.info("Discovered %d Memory OS AI tools", len(mem_tools))
+
+    for tool_def in mem_tools:
+        name = tool_def.get("name", "")
+        if filter_prefix and not name.startswith(filter_prefix):
+            continue
+        if prefixes and not any(name.startswith(p) for p in prefixes):
+            continue
+        tool = _wrap_memory_tool(tool_def)
+        toolkit.register(tool)
+
+    logger.info("Registered %d memory tools in ToolKit", len(toolkit.list_tools()))
+    return toolkit
+
+
+def extend_agent_with_memory(
+    agent: Any,
+    filter_prefix: str = "",
+    categories: list[str] | None = None,
+) -> int:
+    """
+    Add Memory OS AI tools to an existing LLMAgent.
+
+    Returns:
+        Number of memory tools added.
+    """
+    mem_toolkit = create_memory_toolkit(
+        filter_prefix=filter_prefix,
+        categories=categories,
+    )
+    count = 0
+    for tool in mem_toolkit.list_tools():
+        agent._toolkit.register(tool)
+        count += 1
+    logger.info("Extended agent '%s' with %d memory tools", getattr(agent, "name", "?"), count)
+    return count
+
+
+def extend_agent_with_all_mcp(
+    agent: Any,
+    mcp_url: str | None = None,
+    mcp_categories: list[str] | None = None,
+    memory_categories: list[str] | None = None,
+) -> int:
+    """
+    Add both OpenClaw MCP tools (143) and Memory OS AI tools (21) to an agent.
+
+    Args:
+        agent: An LLMAgent instance.
+        mcp_url: OpenClaw MCP server URL.
+        mcp_categories: Filter for OpenClaw tool categories.
+        memory_categories: Filter for Memory OS AI tool categories.
+
+    Returns:
+        Total number of tools added.
+    """
+    total = 0
+
+    # OpenClaw tools
+    try:
+        total += extend_agent_with_mcp(
+            agent, mcp_url=mcp_url, categories=mcp_categories,
+        )
+    except Exception as exc:
+        logger.warning("OpenClaw MCP bridge failed: %s", exc)
+
+    # Memory OS AI tools
+    try:
+        total += extend_agent_with_memory(
+            agent, categories=memory_categories,
+        )
+    except Exception as exc:
+        logger.warning("Memory OS AI bridge failed: %s", exc)
+
+    logger.info(
+        "Total: %d ecosystem tools added to '%s'",
+        total, getattr(agent, "name", "?"),
+    )
+    return total
+
+
+def check_all_mcp_servers(mcp_url: str | None = None) -> dict[str, Any]:
+    """Check both MCP servers and return status."""
+    openclaw = check_mcp_server(mcp_url)
+
+    try:
+        mem_tools = _list_memory_tools()
+        memory = {
+            "ok": len(mem_tools) > 0,
+            "source": "direct-import",
+            "tool_count": len(mem_tools),
+            "error": None,
+        }
+    except Exception as exc:
+        memory = {
+            "ok": False,
+            "source": "direct-import",
+            "tool_count": 0,
+            "error": str(exc),
+        }
+
+    return {
+        "openclaw": openclaw,
+        "memory_os_ai": memory,
+        "total_tools": openclaw["tool_count"] + memory["tool_count"],
+    }

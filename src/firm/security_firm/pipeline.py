@@ -71,6 +71,94 @@ def _register_repo_tools(toolkit: ToolKit, repo_path: str) -> None:
         toolkit.register(tool)
 
 
+def _register_memory_tools(toolkit: ToolKit, firm: Any, agent_id: str) -> None:
+    """Register contribute_memory and recall_memory as real tools."""
+    contribute_tool = Tool(
+        name="contribute_memory",
+        description=(
+            "Store a finding or analysis in FIRM shared memory so other agents "
+            "can see it. The 'content' should be a JSON string with finding details. "
+            "The 'tags' should be a comma-separated list like 'finding,high'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string",
+                    "description": "The content to store (JSON string recommended).",
+                },
+                "tags": {
+                    "type": "string",
+                    "description": "Comma-separated tags, e.g. 'finding,critical'.",
+                },
+            },
+            "required": ["content", "tags"],
+        },
+        execute=lambda content="", tags="": _exec_contribute(firm, agent_id, content, tags),
+        dangerous=False,
+    )
+    toolkit.register(contribute_tool)
+
+    recall_tool = Tool(
+        name="recall_memory",
+        description=(
+            "Recall entries from FIRM shared memory matching given tags. "
+            "Pass a tag to search for, like 'finding' or 'architecture'."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Tag to search for in memory.",
+                },
+                "top_k": {
+                    "type": "string",
+                    "description": "Max number of results (default 50).",
+                },
+            },
+            "required": ["query"],
+        },
+        execute=lambda query="", top_k="50": _exec_recall(firm, query, top_k),
+        dangerous=False,
+    )
+    toolkit.register(recall_tool)
+
+
+def _exec_contribute(firm: Any, agent_id: str, content: str, tags: str) -> ToolResult:
+    """Execute contribute_memory tool."""
+    try:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        if not tag_list:
+            tag_list = ["finding"]
+        firm.contribute_memory(agent_id, content, tag_list)
+        return ToolResult(success=True, output=f"Stored in memory with tags: {tag_list}")
+    except Exception as exc:
+        return ToolResult(success=False, output="", error=f"contribute_memory failed: {exc}")
+
+
+def _exec_recall(firm: Any, query: str, top_k: str) -> ToolResult:
+    """Execute recall_memory tool."""
+    try:
+        k = int(top_k) if top_k else 50
+        tags = [t.strip() for t in query.split(",") if t.strip()]
+        if not tags:
+            tags = ["finding"]
+        memories = firm.recall_memory(tags, top_k=k)
+        results = []
+        for mem in memories:
+            results.append({
+                "id": mem.id,
+                "content": mem.content,
+                "tags": mem.tags,
+                "weight": round(mem.weight, 3),
+                "contributor": str(mem.contributor_id),
+            })
+        return ToolResult(success=True, output=json.dumps(results, indent=2))
+    except Exception as exc:
+        return ToolResult(success=False, output="", error=f"recall_memory failed: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # SecurityPipeline
 # ---------------------------------------------------------------------------
@@ -125,14 +213,23 @@ class SecurityPipeline:
             # Register repo-scanner tools
             _register_repo_tools(agent._toolkit, self.repo_path)
 
-            # Optionally extend with MCP tools
+            # Register contribute_memory / recall_memory tools
+            _register_memory_tools(agent._toolkit, self.firm, agent.agent_id)
+
+            # Optionally extend with MCP + Memory OS AI tools
             if self.use_mcp:
                 try:
-                    from firm.llm.mcp_bridge import extend_agent_with_mcp
-                    extend_agent_with_mcp(agent, categories=spec.mcp_categories)
+                    from firm.llm.mcp_bridge import extend_agent_with_all_mcp
+                    added = extend_agent_with_all_mcp(
+                        agent,
+                        mcp_categories=spec.mcp_categories,
+                        memory_categories=spec.memory_categories,
+                    )
                     logger.info(
-                        "MCP tools loaded for %s (categories=%s)",
-                        spec.name, spec.mcp_categories,
+                        "Ecosystem tools loaded for %s: %d tools "
+                        "(mcp=%s, memory=%s)",
+                        spec.name, added,
+                        spec.mcp_categories, spec.memory_categories,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -260,6 +357,10 @@ class SecurityPipeline:
                         result.total_tokens,
                         ", ".join(result.tools_used) if result.tools_used else "none",
                     )
+                    # Extract findings from agent's final output text
+                    self._extract_findings_from_output(result.output, agent_name)
+                    # Extract findings from tool execution results
+                    self._extract_findings_from_tool_results(result, agent_name)
                 except Exception as exc:
                     logger.error("Agent '%s' failed: %s", agent_name, exc)
 
@@ -297,6 +398,7 @@ class SecurityPipeline:
         """Parse JSON findings from agent output text."""
         if not output:
             return
+        count = 0
         # Try to find JSON arrays in the output
         for match in _find_json_arrays(output):
             try:
@@ -305,29 +407,76 @@ class SecurityPipeline:
                     if isinstance(item, dict) and "title" in item:
                         finding = self._dict_to_finding(item, agent_name)
                         self.db.add(finding)
+                        count += 1
             except (json.JSONDecodeError, TypeError):
                 continue
+        # Try to find individual JSON objects (agents often emit one finding at a time)
+        for match in _find_json_objects(output):
+            try:
+                obj = json.loads(match)
+                if isinstance(obj, dict) and "title" in obj:
+                    finding = self._dict_to_finding(obj, agent_name)
+                    self.db.add(finding)
+                    count += 1
+            except (json.JSONDecodeError, TypeError):
+                continue
+        if count:
+            logger.info("Extracted %d findings from %s output", count, agent_name)
 
-    def _extract_findings_from_memory(self) -> None:
-        """Pull findings from FIRM shared memory."""
-        try:
-            memories = self.firm.recall_memory("finding", top_k=200)
-            for mem in memories:
-                content = mem.get("content", "") if isinstance(mem, dict) else str(mem)
+    def _extract_findings_from_tool_results(
+        self, result: "ExecutionResult", agent_name: str,
+    ) -> None:
+        """Extract findings from tool execution results (contribute_memory calls)."""
+        for te in result.tool_executions:
+            if te.tool_name == "contribute_memory":
+                content = te.arguments.get("content", "")
+                if not content:
+                    continue
                 try:
                     data = json.loads(content) if isinstance(content, str) else content
                     if isinstance(data, dict) and "title" in data:
-                        agent = data.get("found_by", "unknown")
-                        finding = self._dict_to_finding(data, agent)
-                        self.db.add(finding)
+                        self.db.add(self._dict_to_finding(data, agent_name))
                     elif isinstance(data, list):
                         for item in data:
                             if isinstance(item, dict) and "title" in item:
-                                self.db.add(self._dict_to_finding(item, "memory"))
-                except (json.JSONDecodeError, TypeError, AttributeError):
-                    continue
-        except Exception as exc:
-            logger.warning("Could not extract from memory: %s", exc)
+                                self.db.add(self._dict_to_finding(item, agent_name))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            # Also try recall_memory results — they may contain finding JSON
+            if te.result and te.result.output:
+                self._extract_findings_from_output(te.result.output, agent_name)
+
+    def _extract_findings_from_memory(self) -> None:
+        """Pull findings from FIRM shared memory."""
+        count = 0
+        for tag in ["finding", "vulnerability", "triage", "confirmed"]:
+            try:
+                memories = self.firm.recall_memory([tag], top_k=200)
+                for mem in memories:
+                    # MemoryEntry is a dataclass — access .content, not dict
+                    content = getattr(mem, "content", "") or (
+                        mem.get("content", "") if isinstance(mem, dict) else str(mem)
+                    )
+                    try:
+                        data = json.loads(content) if isinstance(content, str) else content
+                        if isinstance(data, dict) and "title" in data:
+                            agent = data.get("found_by", getattr(mem, "contributor_id", "memory"))
+                            if hasattr(agent, "value"):  # AgentId
+                                agent = agent.value or "memory"
+                            finding = self._dict_to_finding(data, str(agent))
+                            self.db.add(finding)
+                            count += 1
+                        elif isinstance(data, list):
+                            for item in data:
+                                if isinstance(item, dict) and "title" in item:
+                                    self.db.add(self._dict_to_finding(item, "memory"))
+                                    count += 1
+                    except (json.JSONDecodeError, TypeError, AttributeError):
+                        continue
+            except Exception as exc:
+                logger.warning("Could not extract from memory (tag=%s): %s", tag, exc)
+        if count:
+            logger.info("Extracted %d findings from shared memory", count)
 
     @staticmethod
     def _dict_to_finding(d: dict, default_agent: str) -> Finding:
@@ -410,6 +559,39 @@ def _find_json_arrays(text: str) -> list[str]:
             if depth == 0 and start >= 0:
                 candidate = text[start : i + 1]
                 if len(candidate) > 10:  # skip trivially small
+                    results.append(candidate)
+                start = -1
+    return results
+
+
+def _find_json_objects(text: str) -> list[str]:
+    """Extract top-level JSON object substrings `{...}` from text."""
+    results: list[str] = []
+    depth = 0
+    start = -1
+    in_string = False
+    escape_next = False
+    for i, ch in enumerate(text):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\" and in_string:
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                candidate = text[start : i + 1]
+                if len(candidate) > 20:  # skip trivially small
                     results.append(candidate)
                 start = -1
     return results

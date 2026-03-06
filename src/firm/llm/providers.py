@@ -629,7 +629,7 @@ class CopilotProProvider(LLMProvider):
                 self._jwt = new_jwt
 
     # Models that require the /responses API instead of /chat/completions
-    _RESPONSES_MODELS = ("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex",
+    _RESPONSES_MODELS = ("gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex",
                          "gpt-5.1-codex-mini", "gpt-5.1-codex-max")
 
     def _is_responses_model(self) -> bool:

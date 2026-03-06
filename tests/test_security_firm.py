@@ -55,7 +55,7 @@ class TestAgents:
         assert "claude-opus-4.6" in models
         assert "gpt-5.4" in models
         assert "gpt-5.3-codex" in models
-        assert "gemini-3.1-pro" in models
+        assert "gemini-3.1-pro-preview" in models
 
     def test_all_use_copilot_pro(self):
         from firm.security_firm.agents import SECURITY_AGENTS

@@ -4,7 +4,7 @@ Defines 4 specialised agents that scan repositories in parallel:
   - security-director  (claude-opus-4.6)   — orchestrates + deep analysis
   - code-scanner       (gpt-5.4)           — line-by-line code review
   - static-analyzer    (gpt-5.3-codex)     — semgrep + deps + configs
-  - report-synthesizer (gemini-3.1-pro)    — consolidation + final report
+  - report-synthesizer (gemini-3.1-pro-preview) — consolidation + final report
 
 All agents use the ``copilot-pro`` provider (zero API cost).
 """
@@ -30,6 +30,7 @@ class AgentSpec:
     description: str
     config: AgentConfig
     mcp_categories: list[str]
+    memory_categories: list[str] | None = None  # Memory OS AI categories
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +112,7 @@ SECURITY_AGENTS: list[AgentSpec] = [
             system_prompt_extra=_ROLE_DEFS["security-director"],
         ),
         mcp_categories=["security", "compliance", "audit"],
+        memory_categories=["search", "session"],
     ),
     AgentSpec(
         name="code-scanner",
@@ -127,6 +129,7 @@ SECURITY_AGENTS: list[AgentSpec] = [
             system_prompt_extra=_ROLE_DEFS["code-scanner"],
         ),
         mcp_categories=["security", "spec"],
+        memory_categories=["search", "ingest"],
     ),
     AgentSpec(
         name="static-analyzer",
@@ -143,10 +146,11 @@ SECURITY_AGENTS: list[AgentSpec] = [
             system_prompt_extra=_ROLE_DEFS["static-analyzer"],
         ),
         mcp_categories=["security", "observability", "config"],
+        memory_categories=["search", "ingest"],
     ),
     AgentSpec(
         name="report-synthesizer",
-        model="gemini-3.1-pro",
+        model="gemini-3.1-pro-preview",
         provider="copilot-pro",
         initial_authority=0.70,
         description="Report writer — reads full repo, deduplicates, generates report.",
@@ -159,6 +163,7 @@ SECURITY_AGENTS: list[AgentSpec] = [
             system_prompt_extra=_ROLE_DEFS["report-synthesizer"],
         ),
         mcp_categories=["delivery", "security"],
+        memory_categories=["search", "session", "chat"],
     ),
 ]
 
