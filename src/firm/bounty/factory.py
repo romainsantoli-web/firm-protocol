@@ -4,14 +4,24 @@ Each agent has a designated LLM provider, initial authority, and role
 definition.  The factory wires up scope enforcement, vuln database,
 dedup engine, triage pipeline, and reward engine.
 
+Agent model names can be overridden at runtime via environment variables.
+The variable name is derived from the agent name:
+  ``FIRM_<AGENT_NAME_UPPER>_MODEL`` where hyphens are replaced by
+  underscores.  For example, to override the ``hunt-director`` model::
+
+      FIRM_HUNT_DIRECTOR_MODEL=gpt-4o python -m firm ...
+
+A global fallback ``FIRM_DEFAULT_MODEL`` applies to any agent whose
+specific variable is not set.
+
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from firm.bounty.dedup import DeduplicationEngine
 from firm.bounty.reward import RewardEngine
@@ -19,7 +29,6 @@ from firm.bounty.scope import ScopeEnforcer, TargetScope
 from firm.bounty.tools.scanner import RateLimiter, make_bounty_tools
 from firm.bounty.triage import TriagePipeline
 from firm.bounty.vulnerability import VulnDatabase
-
 
 # ---------------------------------------------------------------------------
 # Agent specs
@@ -33,52 +42,72 @@ class AgentSpec:
     description: str
 
 
+def _resolve_model(agent_name: str, default_model: str) -> str:
+    """Return the model to use for *agent_name*.
+
+    Resolution order (first match wins):
+
+    1. ``FIRM_<AGENT_NAME_UPPER>_MODEL`` env var  (hyphens → underscores).
+       Example: ``FIRM_HUNT_DIRECTOR_MODEL`` for the ``hunt-director`` agent.
+    2. ``FIRM_DEFAULT_MODEL`` env var — applies to **all** agents.
+    3. The hard-coded *default_model* built into the factory.
+    """
+    specific_var = "FIRM_" + agent_name.upper().replace("-", "_") + "_MODEL"
+    specific = os.environ.get(specific_var, "").strip()
+    if specific:
+        return specific
+    global_default = os.environ.get("FIRM_DEFAULT_MODEL", "").strip()
+    if global_default:
+        return global_default
+    return default_model
+
+
 BOUNTY_AGENTS: list[AgentSpec] = [
     AgentSpec(
         name="hunt-director",
-        model="claude-sonnet-4-20250514",
+        model=_resolve_model("hunt-director", "claude-sonnet-4-20250514"),
         initial_authority=0.90,
         description="Campaign coordinator — plans phases, assigns targets, synthesises results.",
     ),
     AgentSpec(
         name="recon-agent",
-        model="gpt-4.1",
+        model=_resolve_model("recon-agent", "gpt-4.1"),
         initial_authority=0.70,
         description="Reconnaissance specialist — subdomains, ports, tech stack, URL crawling.",
     ),
     AgentSpec(
         name="web-hunter",
-        model="claude-sonnet-4-20250514",
+        model=_resolve_model("web-hunter", "claude-sonnet-4-20250514"),
         initial_authority=0.65,
         description="Web vulnerability hunter — SQLi, XSS, SSRF, IDOR on web apps.",
     ),
     AgentSpec(
         name="api-hunter",
-        model="gpt-4o",
+        model=_resolve_model("api-hunter", "gpt-4o"),
         initial_authority=0.65,
         description="API vulnerability hunter — auth bypass, BOLA, rate limiting, GraphQL.",
     ),
     AgentSpec(
         name="code-auditor",
-        model="o4-mini",
+        model=_resolve_model("code-auditor", "o4-mini"),
         initial_authority=0.60,
         description="Static code auditor — semgrep, pattern-based detection, dependency audit.",
     ),
     AgentSpec(
         name="mobile-hunter",
-        model="claude-sonnet-4-20250514",
+        model=_resolve_model("mobile-hunter", "claude-sonnet-4-20250514"),
         initial_authority=0.55,
         description="Mobile app security — APK/IPA analysis, certificate pinning, local storage.",
     ),
     AgentSpec(
         name="web3-hunter",
-        model="gpt-4.1",
+        model=_resolve_model("web3-hunter", "gpt-4.1"),
         initial_authority=0.55,
         description="Smart contract / blockchain security — reentrancy, flash loans, oracle manipulation.",
     ),
     AgentSpec(
         name="report-writer",
-        model="gpt-4o",
+        model=_resolve_model("report-writer", "gpt-4o"),
         initial_authority=0.40,
         description="Report writer — crafts clear, detailed H1 reports with reproduction steps.",
     ),

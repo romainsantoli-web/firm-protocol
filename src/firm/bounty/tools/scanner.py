@@ -1,27 +1,28 @@
 """LLM-callable security tools — recon, scan, report.
 
 Every tool is scope-enforced and rate-limited so agents cannot go off-target.
-CLI tools are invoked via subprocess; the Go ``httpx`` binary is called via
-its full path (``/opt/homebrew/bin/httpx``) to avoid collision with the
-Python ``httpx`` pip package.
+CLI tools are invoked via subprocess; the Go ``httpx`` binary is resolved via
+``shutil.which`` to work on any platform.  The ``HTTPX_BIN`` environment
+variable can override the binary path explicitly, and ``FFUF_WORDLIST`` can
+override the default wordlist used by ``scan_ffuf``.
 
 ⚠️ Contenu généré par IA — validation humaine requise avant utilisation.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
+import os
 import shutil
+import socket
+import ssl
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from firm.bounty.scope import ScopeEnforcer
-
 
 # ---------------------------------------------------------------------------
 # Rate limiter (token-bucket per target)
@@ -81,8 +82,60 @@ def _run(cmd: list[str], timeout: int = 120) -> str:
         return f"[TOOL NOT FOUND: {cmd[0]}]"
 
 
-# Path to Go httpx binary (avoids Python httpx-cli collision)
-_HTTPX_BIN = "/opt/homebrew/bin/httpx"
+def _resolve_httpx_bin() -> str:
+    """Return the path to the Go httpx binary.
+
+    Resolution order (first match wins):
+    1. ``HTTPX_BIN`` environment variable.
+    2. ``httpx-toolkit`` on ``$PATH`` (common Linux package name).
+    3. ``httpx`` on ``$PATH`` (generic name, may collide with Python package).
+    4. macOS Homebrew default ``/opt/homebrew/bin/httpx``.
+
+    If none is found the first available name is returned anyway so that
+    the caller receives a useful ``[TOOL NOT FOUND]`` message rather than
+    a silent failure.
+    """
+    env_override = os.environ.get("HTTPX_BIN", "").strip()
+    if env_override:
+        return env_override
+    for candidate in ("httpx-toolkit", "httpx"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    # macOS Homebrew fallback
+    homebrew_path = "/opt/homebrew/bin/httpx"
+    if Path(homebrew_path).exists():
+        return homebrew_path
+    return "httpx-toolkit"  # will produce a clear TOOL NOT FOUND message
+
+
+_DEFAULT_FFUF_WORDLISTS: list[str] = [
+    "/usr/share/seclists/Discovery/Web-Content/common.txt",         # Debian/Ubuntu
+    "/usr/share/SecLists/Discovery/Web-Content/common.txt",         # some distros
+    str(Path.home() / "SecLists/Discovery/Web-Content/common.txt"), # macOS/user install
+    "/opt/homebrew/share/seclists/Discovery/Web-Content/common.txt", # Homebrew
+]
+
+
+def _resolve_ffuf_wordlist(wordlist: str = "") -> str | None:
+    """Return the first available wordlist path.
+
+    Resolution order:
+    1. Explicit ``wordlist`` argument (if non-empty and the file exists).
+    2. ``FFUF_WORDLIST`` environment variable.
+    3. Platform-specific default locations (see ``_DEFAULT_FFUF_WORDLISTS``).
+
+    Returns ``None`` when no wordlist can be found.
+    """
+    if wordlist:
+        return wordlist if Path(wordlist).exists() else None
+    env_wl = os.environ.get("FFUF_WORDLIST", "").strip()
+    if env_wl:
+        return env_wl if Path(env_wl).exists() else None
+    for path in _DEFAULT_FFUF_WORDLISTS:
+        if Path(path).exists():
+            return path
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +176,7 @@ def make_recon_tools(
             return f"BLOCKED: {target} is not in scope."
         if not limiter.allow(target):
             return "RATE LIMITED — retry later."
-        httpx_bin = _HTTPX_BIN if Path(_HTTPX_BIN).exists() else "httpx-toolkit"
+        httpx_bin = _resolve_httpx_bin()
         return _run(
             [httpx_bin, "-u", f"https://{target}",
              "-tech-detect", "-status-code", "-title", "-silent"],
@@ -201,13 +254,9 @@ def make_scanning_tools(
             return f"BLOCKED: {target} is not in scope."
         if not limiter.allow(target):
             return "RATE LIMITED — retry later."
-        wl = wordlist or "/usr/share/seclists/Discovery/Web-Content/common.txt"
-        if not Path(wl).exists():
-            wl_alt = Path.home() / "SecLists/Discovery/Web-Content/common.txt"
-            if wl_alt.exists():
-                wl = str(wl_alt)
-            else:
-                return "[WORDLIST NOT FOUND — install SecLists]"
+        wl = _resolve_ffuf_wordlist(wordlist)
+        if wl is None:
+            return "[WORDLIST NOT FOUND — set FFUF_WORDLIST or install SecLists]"
         url = f"https://{target}{path}"
         return _run(
             ["ffuf", "-u", url, "-w", wl,
@@ -278,8 +327,6 @@ def make_scanning_tools(
             return f"BLOCKED: {target} is not in scope."
         if not limiter.allow(target):
             return "RATE LIMITED — retry later."
-        import ssl
-        import socket
         findings: list[str] = []
         try:
             ctx = ssl.create_default_context()
