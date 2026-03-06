@@ -527,6 +527,14 @@ class CopilotProProvider(LLMProvider):
     The JWT expires every ~30 min — auto-refresh via cached OAuth token.
 
     This provider uses httpx directly — no openai/anthropic SDK needed.
+
+    Available models (as of March 2026):
+      Claude: claude-haiku-4.5, claude-sonnet-4, claude-sonnet-4.5, claude-sonnet-4.6,
+              claude-opus-4.5, claude-opus-4.6
+      GPT:    gpt-4.1, gpt-4o, gpt-5-mini, gpt-5.1, gpt-5.2, gpt-5.3, gpt-5.4
+      Codex:  gpt-5.1-codex, gpt-5.1-codex-mini, gpt-5.1-codex-max, gpt-5.2-codex,
+              gpt-5.3-codex
+      Gemini: gemini-2.5-pro, gemini-3-pro, gemini-3.1-pro
     """
 
     name = "copilot-pro"
@@ -559,7 +567,7 @@ class CopilotProProvider(LLMProvider):
         self._jwt = jwt
 
     def _default_model(self) -> str:
-        return "claude-sonnet-4"
+        return "claude-sonnet-4.6"
 
     @staticmethod
     def _load_cached_tokens() -> tuple[str | None, str | None, int]:
@@ -621,7 +629,7 @@ class CopilotProProvider(LLMProvider):
                 self._jwt = new_jwt
 
     # Models that require the /responses API instead of /chat/completions
-    _RESPONSES_MODELS = ("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex",
+    _RESPONSES_MODELS = ("gpt-5.4", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex",
                          "gpt-5.1-codex-mini", "gpt-5.1-codex-max")
 
     def _is_responses_model(self) -> bool:
