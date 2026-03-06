@@ -192,7 +192,7 @@ Plus advanced capabilities:
 | `core.meta` | Meta-constitutional amendment lifecycle |
 | `core.prediction` | √authority-weighted prediction markets, Brier scoring, futarchy |
 | `bounty` | Multi-agent bug bounty hunting platform (8 agents) |
-| `llm` | LLM providers (Claude, GPT, Mistral) + 18 tools |
+| `llm` | LLM providers (Claude, GPT, Mistral, Gemini, Copilot Pro) + 18 tools + MCP bridge |
 | `api` | FastAPI REST API + WebSocket events + dashboard |
 
 ### Two Invariants
@@ -371,11 +371,12 @@ firm-protocol/
 │   │   ├── factory.py           #   Bounty FIRM factory
 │   │   ├── sandbox/             #   Sandboxed tool execution
 │   │   └── tools/               #   12 LLM scanner tools
-│   ├── llm/                     # LLM integration (4 modules)
-│   │   ├── providers.py         #   Claude, GPT, Mistral, Gemini
+│   ├── llm/                     # LLM integration (5 modules)
+│   │   ├── providers.py         #   Claude, GPT, Mistral, Gemini, Copilot Pro
 │   │   ├── agent.py             #   LLM-powered agent wrapper
 │   │   ├── executor.py          #   Tool call executor
-│   │   └── tools.py             #   18 built-in tools
+│   │   ├── tools.py             #   18 built-in tools
+│   │   └── mcp_bridge.py        #   Bridge to 143 MCP ecosystem tools
 │   └── api/                     # REST API (1 module)
 │       └── app.py               #   FastAPI + WebSocket + dashboard
 ├── tests/                       # 46 test files, 1137 tests
@@ -427,18 +428,55 @@ firm-protocol/
 FIRM agents can be powered by LLMs with 18 built-in tools:
 
 ```python
-from firm.llm import LLMAgent
-from firm.llm.providers import ClaudeProvider
+from firm.runtime import Firm
+from firm.llm.agent import create_llm_agent
 
-provider = ClaudeProvider(api_key="sk-...")
-agent = LLMAgent(provider=provider, tools="all")
+firm = Firm("my-startup")
+cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro",
+                       model="claude-sonnet-4.6", authority=0.8)
+dev = create_llm_agent(firm, "dev-1", provider_name="copilot-pro",
+                       model="gpt-4.1", authority=0.5)
 
-# The agent can use: git, file, terminal, HTTP, Python execution,
-# prediction markets, and more — all within FIRM's authority system.
-response = await agent.run("Analyze the auth module for vulnerabilities")
+# The agent uses git, file, terminal, HTTP, Python, prediction markets —
+# all within FIRM's authority system.
+result = cto.execute_task("Analyze the auth module for vulnerabilities")
 ```
 
-Supported providers: **Anthropic Claude**, **OpenAI GPT**, **Mistral**, **Google Gemini** (free-tier fallback chain).
+Supported providers: **Anthropic Claude**, **OpenAI GPT**, **Mistral**, **Google Gemini**, **GitHub Copilot**, **Copilot Pro** (21 models).
+
+### Copilot Pro Models
+
+| Family | Models |
+|--------|--------|
+| Claude | `claude-haiku-4.5`, `claude-opus-4.5`, `claude-opus-4.6`, `claude-sonnet-4` (default), `claude-sonnet-4.5`, `claude-sonnet-4.6` |
+| GPT | `gpt-4.1`, `gpt-4o`, `gpt-5-mini`, `gpt-5.1`, `gpt-5.2`, `gpt-5.3`, `gpt-5.4` |
+| Codex | `codex-5.1`, `codex-5.2`, `codex-5.3-codex`, `codex-5.1-codex-mini`, `codex-5.1-codex-max` |
+| Gemini | `gemini-2.5-pro`, `gemini-3-pro`, `gemini-3.1-pro` |
+
+---
+
+## MCP Bridge — 143 Ecosystem Tools
+
+Connect FIRM agents to the full MCP ecosystem (security, memory, A2A, delivery, market research…):
+
+```python
+from firm.runtime import Firm
+from firm.llm.agent import create_llm_agent
+from firm.llm.mcp_bridge import extend_agent_with_mcp, create_mcp_toolkit
+
+firm = Firm("my-startup")
+cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro", authority=0.8)
+
+# Add all 143 MCP tools, or filter by category
+extend_agent_with_mcp(cto, categories=["security", "memory"])
+
+# Or get a standalone ToolKit
+security_kit = create_mcp_toolkit(categories=["security"])
+```
+
+**14 categories:** security, memory, a2a, gateway, fleet, audit, delivery, compliance, observability, config, orchestration, acp, market_research, spec.
+
+Requires the MCP server running on port 8012 (`$FIRM_MCP_URL`).
 
 ---
 
