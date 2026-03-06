@@ -31,6 +31,6 @@ jobs:
       - name: Test
         run: |
           python -m pytest tests/ -v \
-            --cov=firm \
+            --cov=src/firm \
             --cov-report=term-missing \
             --cov-fail-under=80
