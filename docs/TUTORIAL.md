@@ -782,7 +782,7 @@ cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro",
 
 # Dev senior = GPT-5.3 — dernière gen, très performant
 senior = create_llm_agent(firm, "Senior", provider_name="copilot-pro",
-                          model="gpt-5.3", authority=0.7)
+                          model="gpt-5.4", authority=0.7)
 
 # Reviewer = Claude Sonnet 4.6 — rapide et précis pour la review
 reviewer = create_llm_agent(firm, "Reviewer", provider_name="copilot-pro",
@@ -811,7 +811,6 @@ for agent in [cto, senior, reviewer, junior, coder, architect]:
 ```
 CTO        | copilot-pro  | claude-opus-4.6
 Senior     | copilot-pro  | gpt-5.4
-Senior     | copilot-pro  | gpt-5.3
 Reviewer   | copilot-pro  | claude-sonnet-4.6
 Junior     | copilot-pro  | claude-haiku-4.5
 Coder      | copilot-pro  | gpt-5.3-codex
@@ -820,18 +819,18 @@ Architect  | copilot-pro  | gemini-3.1-pro
 
 ### Récapitulatif : quel provider choisir ?
 
-| Situation                                  | Provider recommandé | Modèle                                      | Coût                     |
-| ------------------------------------------ | -------------------: | -------------------------------------------- | ------------------------- |
-| **Copilot Pro** — tâches complexes |      `copilot-pro` | `claude-opus-4.6`                          | Inclus dans l'abo         |
-| **Copilot Pro** — usage général   |      `copilot-pro` | `claude-sonnet-4.6` ou `gpt-5.3/gpt-5.4` | Inclus                    |
-| **Copilot Pro** — code intensif     |      `copilot-pro` | `gpt-5.3-codex`                            | Inclus                    |
-| **Copilot Pro** — tâches simples   |      `copilot-pro` | `claude-haiku-4.5` ou `gpt-5-mini`       | Inclus                    |
-| **Copilot Pro** — Google AI         |      `copilot-pro` | `gemini-3.1-pro`                           | Inclus                    |
-| Clé**Anthropic** directe            |           `claude` | `claude-sonnet-4`                          | $3 / $15 par 1M tokens    |
-| Clé**OpenAI** directe               |              `gpt` | `gpt-4o`                                   | $2.5 / $10 par 1M tokens  |
-| **Gratuit** (Google)                 |           `gemini` | `gemini-2.5-pro`                           | Gratuit (rate-limited)    |
-| **Gratuit** (GitHub)                 |          `copilot` | `gpt-4o`                                   | Gratuit (rate-limited)    |
-| Budget serré                              |          `mistral` | `mistral-small-latest`                     | $0.2 / $0.6 par 1M tokens |
+| Situation                                  | Provider recommandé | Modèle                                | Coût                     |
+| ------------------------------------------ | -------------------: | -------------------------------------- | ------------------------- |
+| **Copilot Pro** — tâches complexes |      `copilot-pro` | `claude-opus-4.6`                    | Inclus dans l'abo         |
+| **Copilot Pro** — usage général   |      `copilot-pro` | `claude-sonnet-4.6` ou `gpt-5.4`   | Inclus                    |
+| **Copilot Pro** — code intensif     |      `copilot-pro` | `gpt-5.3-codex`                      | Inclus                    |
+| **Copilot Pro** — tâches simples   |      `copilot-pro` | `claude-haiku-4.5` ou `gpt-5-mini` | Inclus                    |
+| **Copilot Pro** — Google AI         |      `copilot-pro` | `gemini-3.1-pro`                     | Inclus                    |
+| Clé**Anthropic** directe            |           `claude` | `claude-sonnet-4`                    | $3 / $15 par 1M tokens    |
+| Clé**OpenAI** directe               |              `gpt` | `gpt-4o`                             | $2.5 / $10 par 1M tokens  |
+| **Gratuit** (Google)                 |           `gemini` | `gemini-2.5-pro`                     | Gratuit (rate-limited)    |
+| **Gratuit** (GitHub)                 |          `copilot` | `gpt-4o`                             | Gratuit (rate-limited)    |
+| Budget serré                              |          `mistral` | `mistral-small-latest`               | $0.2 / $0.6 par 1M tokens |
 
 ---
 
@@ -1374,14 +1373,14 @@ else:
 
 Le bridge MCP a été testé **sur ce repository** (`firm-protocol/src/firm`) :
 
-| Étape | Résultat | Statut |
-|-------|----------|--------|
-| **Connexion MCP** | `143 outils` découverts via JSON-RPC | ✅ |
-| **Création Firm** | Organisation `test-mcp-bridge` initialisée | ✅ |
-| **ToolKit Security** | `10 outils` chargés (scan, sandbox, secrets…) | ✅ |
-| **Appel MCP réel** | `firm_security_scan` → **45 fichiers scannés**, 4 vulnérabilités HIGH dans `reputation.py` | ✅ |
-| **Filtrage catégories** | memory (10) · a2a (8) · compliance (14) · delivery (6) | ✅ |
-| **Extension agent** | `20 outils MCP` ajoutés au CTO (security + memory) | ✅ |
+| Étape                         | Résultat                                                                                                | Statut |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- | ------ |
+| **Connexion MCP**        | `143 outils` découverts via JSON-RPC                                                                  | ✅     |
+| **Création Firm**       | Organisation `test-mcp-bridge` initialisée                                                            | ✅     |
+| **ToolKit Security**     | `10 outils` chargés (scan, sandbox, secrets…)                                                        | ✅     |
+| **Appel MCP réel**      | `firm_security_scan` → **45 fichiers scannés**, 4 vulnérabilités HIGH dans `reputation.py` | ✅     |
+| **Filtrage catégories** | memory (10) · a2a (8) · compliance (14) · delivery (6)                                                | ✅     |
+| **Extension agent**      | `20 outils MCP` ajoutés au CTO (security + memory)                                                    | ✅     |
 
 > **Conclusion :** Un agent FIRM connecté via `extend_agent_with_mcp(cto)` peut appeler
 > nativement les 143 outils de l'écosystème MCP dans le cadre du système d'autorité FIRM.
