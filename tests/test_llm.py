@@ -85,7 +85,7 @@ class TestGetProvider:
             p = get_provider("gpt")
             assert p.name == "gpt"
 
-        with patch("mistralai.Mistral"):
+        with patch("mistralai.Mistral", create=True):
             p = get_provider("mistral")
             assert p.name == "mistral"
 
@@ -191,14 +191,14 @@ class TestGPTProviderConversion:
 
 class TestMistralProviderConversion:
     def test_convert_tools(self):
-        with patch("mistralai.Mistral"):
+        with patch("mistralai.Mistral", create=True):
             p = MistralProvider(api_key="test")
         tools = [ToolDefinition(name="t", description="d", parameters={"type": "object"})]
         result = p._convert_tools(tools)
         assert result[0]["type"] == "function"
 
     def test_default_model(self):
-        with patch("mistralai.Mistral"):
+        with patch("mistralai.Mistral", create=True):
             p = MistralProvider(api_key="test")
         assert "mistral" in p.model
 
