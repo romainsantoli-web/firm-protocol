@@ -46,6 +46,7 @@ FIRM treats execution history and memory as first-class runtime concerns.
 - Replay is anchored on the durable ledger, not on WebSocket delivery guarantees.
 - Exactly-once is not guaranteed.
 - At-least-once replay of commands/events; clients must be idempotent per `(agent_id, entry_hash)`.
+- Idempotency key example: `Idempotency-Key: agent_id=alice, entry_hash=a3f8c1...`. Required on REST mutation paths (`POST /agents/{id}/execute`, `POST /agents/{id}/propose`, `POST /governance/{id}/vote`).
 
 ### Determinism boundary
 
@@ -177,10 +178,15 @@ firm audit
 Because the immediate priority for v0 is zero-config, local-first development with fully inspectable persistence and no external dependency surface.
 SQLite/WAL is the natural next step for single-node production once indexed queries, stronger crash semantics, and concurrent access become primary concerns.
 
+## Migration
+
+Filesystem JSON ledger (v0) → SQLite/WAL keeps the ledger semantics and `since_hash` cursor contract stable.
+The append-only, hash-chained model maps directly to a SQLite table; the replay endpoint shape does not change.
+
 ## Deployment Path
 
 - Local-first dev: pure Python core, JSON persistence, in-process event bus.
-- Single-node prod: same runtime model, with SQLite/WAL as the likely persistence upgrade.
+- Single-node prod: same runtime model, with SQLite/WAL as the persistence upgrade (ledger semantics unchanged).
 - Later: multi-tenant and more distributed transport semantics once the public contracts are stable.
 
 ## Non-Goals
