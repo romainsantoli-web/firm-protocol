@@ -1,8 +1,8 @@
 # Persistent state + memory for long-running LLM workflows
 
-Long-running LLM workflows need durable state and replayable history, not just stateless prompt chains.
-FIRM is a Python-native, zero-dependency runtime that combines append-only execution history, persistent memory, and explicit governance into one local-first system.
-It is built for agent builders who want a runtime they can inspect, embed, and evolve without depending on a managed control plane.
+FIRM is a Python-native (stdlib-only) runtime for long-running LLM/agent workflows.
+It combines (1) an append-only, hash-chained execution ledger, (2) scoped persistent memory, and (3) a clear command/event split (REST for commands, WebSocket for events).
+v0 is local-first and zero-config; single-node production moves to SQLite/WAL without changing the external contract.
 
 ## Problem
 
@@ -41,16 +41,17 @@ FIRM treats execution history and memory as first-class runtime concerns.
 
 ### Execution semantics
 
-- Workflow and runtime state are persisted through an append-only ledger and JSON state snapshots.
+- Workflow and runtime state are persisted through an append-only ledger and JSON state snapshots. Snapshots are derived from the ledger; ledger is source of truth.
 - WebSocket delivery is best-effort. There is no durable event queue in v0.
 - Replay is anchored on the durable ledger, not on WebSocket delivery guarantees.
 - Exactly-once is not guaranteed.
-- The intended contract is at-least-once style recovery via durable history plus idempotent client handling where needed.
+- At-least-once replay of commands/events; clients must be idempotent per `(agent_id, entry_hash)`.
 
 ### Determinism boundary
 
 - The runtime core, event emission path, ledger append path, and state serialization are deterministic within a single node.
 - Non-determinism sits behind adapters: LLM calls, external tools, network access, and any side effects outside the core runtime.
+- Replay is deterministic for runtime state transitions given the same ledger.
 - Replay is therefore a runtime-history replay contract, not a claim that every external side effect can be deterministically reproduced.
 
 ### Event stream semantics
@@ -58,8 +59,10 @@ FIRM treats execution history and memory as first-class runtime concerns.
 - On a single node, FIRM emits events synchronously and appends them to a single append-only ledger, so there is an internal global emission order.
 - The public contract, however, is strict ordering per workflow/agent scope only; clients must not depend on a node-wide total order.
 - Ordering is guaranteed within a workflow/agent scope; across scopes, ordering is unspecified.
-- WebSocket delivery is best-effort (no durable queue yet).
-- The ledger is durable and tamper-evident, so clients resume by replaying from a cursor: `GET /ledger?since_hash=<entry_hash>&limit=N` — exclusive semantics (entries after that hash).
+- WebSocket delivery is best-effort (no durable queue yet). WebSocket events are an optimization; authoritative replay is via ledger.
+- The ledger is durable and tamper-evident, so clients resume by replaying from a cursor:
+  `GET /ledger?since_hash=<entry_hash>&limit=N`
+  exclusive semantics: returns entries after `since_hash`.
 
 ## Memory Model
 
@@ -182,10 +185,11 @@ SQLite/WAL is the natural next step for single-node production once indexed quer
 
 ## Non-Goals
 
-- Not a claim of exactly-once distributed execution.
-- Not a claim of durable queued delivery over WebSocket in v0.
+- Not exactly-once semantics in v0.
+- No durable WebSocket queue in v0.
+- No multi-node ordering guarantees yet.
+- No claims about deterministically reproducing external side effects (LLM/tools).
 - Not a polyglot runtime core in v0; the core remains Python-native.
-- Not a promise of node-wide ordering as a public contract.
 
 ## Proof
 
