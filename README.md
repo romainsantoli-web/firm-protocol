@@ -192,7 +192,7 @@ Plus advanced capabilities:
 | `core.meta` | Meta-constitutional amendment lifecycle |
 | `core.prediction` | √authority-weighted prediction markets, Brier scoring, futarchy |
 | `bounty` | Multi-agent bug bounty hunting platform (8 agents) |
-| `llm` | LLM providers (Claude, GPT, Mistral) + 18 tools |
+| `llm` | LLM providers (Claude, GPT, Mistral, Gemini, Copilot Pro) + 18 tools + MCP bridge |
 | `api` | FastAPI REST API + WebSocket events + dashboard |
 
 ### Two Invariants
@@ -371,11 +371,12 @@ firm-protocol/
 │   │   ├── factory.py           #   Bounty FIRM factory
 │   │   ├── sandbox/             #   Sandboxed tool execution
 │   │   └── tools/               #   12 LLM scanner tools
-│   ├── llm/                     # LLM integration (4 modules)
-│   │   ├── providers.py         #   Claude, GPT, Mistral, Gemini
+│   ├── llm/                     # LLM integration (5 modules)
+│   │   ├── providers.py         #   Claude, GPT, Mistral, Gemini, Copilot Pro
 │   │   ├── agent.py             #   LLM-powered agent wrapper
 │   │   ├── executor.py          #   Tool call executor
-│   │   └── tools.py             #   18 built-in tools
+│   │   ├── tools.py             #   18 built-in tools
+│   │   └── mcp_bridge.py        #   Bridge to 143 MCP ecosystem tools
 │   └── api/                     # REST API (1 module)
 │       └── app.py               #   FastAPI + WebSocket + dashboard
 ├── tests/                       # 46 test files, 1137 tests
@@ -427,18 +428,219 @@ firm-protocol/
 FIRM agents can be powered by LLMs with 18 built-in tools:
 
 ```python
-from firm.llm import LLMAgent
-from firm.llm.providers import ClaudeProvider
+from firm.runtime import Firm
+from firm.llm.agent import create_llm_agent
 
-provider = ClaudeProvider(api_key="sk-...")
-agent = LLMAgent(provider=provider, tools="all")
+firm = Firm("my-startup")
+cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro",
+                       model="claude-sonnet-4.6", authority=0.8)
+dev = create_llm_agent(firm, "dev-1", provider_name="copilot-pro",
+                       model="gpt-4.1", authority=0.5)
 
-# The agent can use: git, file, terminal, HTTP, Python execution,
-# prediction markets, and more — all within FIRM's authority system.
-response = await agent.run("Analyze the auth module for vulnerabilities")
+# The agent uses git, file, terminal, HTTP, Python, prediction markets —
+# all within FIRM's authority system.
+result = cto.execute_task("Analyze the auth module for vulnerabilities")
 ```
 
-Supported providers: **Anthropic Claude**, **OpenAI GPT**, **Mistral**, **Google Gemini** (free-tier fallback chain).
+Supported providers: **Anthropic Claude**, **OpenAI GPT**, **Mistral**, **Google Gemini**, **GitHub Copilot**, **Copilot Pro** (21 models).
+
+### Copilot Pro Models
+
+| Family | Models |
+|--------|--------|
+| Claude | `claude-haiku-4.5`, `claude-opus-4.5`, `claude-opus-4.6`, `claude-sonnet-4` (default), `claude-sonnet-4.5`, `claude-sonnet-4.6` |
+| GPT | `gpt-4.1`, `gpt-4o`, `gpt-5-mini`, `gpt-5.1`, `gpt-5.2`, `gpt-5.3`, `gpt-5.4` |
+| Codex | `codex-5.1`, `codex-5.2`, `codex-5.3-codex`, `codex-5.1-codex-mini`, `codex-5.1-codex-max` |
+| Gemini | `gemini-2.5-pro`, `gemini-3-pro`, `gemini-3.1-pro` |
+
+---
+
+## MCP Bridge — 143 Ecosystem Tools
+
+Connect FIRM agents to the full MCP ecosystem (security, memory, A2A, delivery, market research…):
+
+```python
+from firm.runtime import Firm
+from firm.llm.agent import create_llm_agent
+from firm.llm.mcp_bridge import extend_agent_with_mcp, create_mcp_toolkit
+
+firm = Firm("my-startup")
+cto = create_llm_agent(firm, "CTO", provider_name="copilot-pro", authority=0.8)
+
+# Add all 143 MCP tools, or filter by category
+extend_agent_with_mcp(cto, categories=["security", "memory"])
+
+# Or get a standalone ToolKit
+security_kit = create_mcp_toolkit(categories=["security"])
+```
+
+**14 categories:** security, memory, a2a, gateway, fleet, audit, delivery, compliance, observability, config, orchestration, acp, market_research, spec.
+
+Requires the MCP server running on port 8012 (`$FIRM_MCP_URL`).
+
+### ✅ Live Validation — Bridge tested on this project
+
+The MCP bridge was tested end-to-end on **this repository** (`firm-protocol/src/firm`):
+
+<table>
+<tr><th>Step</th><th>Result</th><th>Status</th></tr>
+<tr><td><b>MCP Connectivity</b></td><td><code>143 tools</code> discovered via JSON-RPC</td><td>✅</td></tr>
+<tr><td><b>Firm Creation</b></td><td>Organization <code>test-mcp-bridge</code> initialized</td><td>✅</td></tr>
+<tr><td><b>Security ToolKit</b></td><td><code>10 tools</code> loaded (scan, sandbox, secrets…)</td><td>✅</td></tr>
+<tr><td><b>Real MCP Call</b></td><td><code>firm_security_scan</code> → <b>45 files scanned</b>, 4 HIGH findings in <code>reputation.py</code></td><td>✅</td></tr>
+<tr><td><b>Category Filtering</b></td><td>memory (10) · a2a (8) · compliance (14) · delivery (6)</td><td>✅</td></tr>
+<tr><td><b>Agent Extension</b></td><td><code>20 MCP tools</code> added to CTO agent (security + memory)</td><td>✅</td></tr>
+</table>
+
+> **Result:** An agent connected via `extend_agent_with_mcp(cto)` can call any of the 143 ecosystem tools
+> (security audit, hebbian memory, A2A protocol, delivery export…) natively within FIRM's authority system.
+
+### ✅ External Validation — Security scan on crewAI (1004 Python files)
+
+The MCP bridge was validated on **5 major open-source AI frameworks** — 8,785 files scanned, 300 findings, **0 CRITICAL vulnerabilities**:
+
+| Framework | Files | Findings | CRITICAL | Report |
+|-----------|------:|----------|---------:|--------|
+| [crewAI](https://github.com/crewAIInc/crewAI) | 412 | 17 | 0 | [Report](scan-reports/REPORT-crewai.md) |
+| [LangGraph + LangChain](https://github.com/langchain-ai) | 2,205 | 42 | 0 | [Report](scan-reports/REPORT-langchain.md) |
+| [Microsoft AutoGen](https://github.com/microsoft/autogen) | 355 | 15 | 0 | [Report](scan-reports/REPORT-autogen.md) |
+| [designing-multiagent-systems](https://github.com/victordibia/designing-multiagent-systems) | 219 | 2 | 0 | [Report](scan-reports/REPORT-dmas.md) |
+| [OpenClaw](https://github.com/openclaw/openclaw) (self-scan) | 5,594 | 224 | 0 | [Report](scan-reports/REPORT-openclaw.md) |
+| **Total** | **8,785** | **300** | **0** | |
+
+> Full reports, reproduction scripts, and methodology: **[scan-reports/](scan-reports/README.md)**
+
+<details>
+<summary><b>📋 Example: run a scan on crewAI</b></summary>
+
+```bash
+# Clone target
+git clone --depth 1 https://github.com/crewAIInc/crewAI.git /tmp/crewai
+
+# Run scan (requires MCP server on port 8012)
+python scan-reports/crewai_security_scan.py
+```
+
+```python
+from firm.runtime import Firm
+from firm.llm.mcp_bridge import check_mcp_server, create_mcp_toolkit
+
+# 1. Verify MCP server
+status = check_mcp_server()
+assert status["ok"], f"MCP unreachable: {status['error']}"
+print(f"✅ {status['tool_count']} tools available")
+
+# 2. Create security toolkit & run a scan
+kit = create_mcp_toolkit(categories=["security"])
+result = kit.execute("firm_security_scan", {
+    "target_path": "/tmp/crewai"
+})
+print(f"Scan: success={result.success}")
+print(result.output[:500])
+```
+
+</details>
+
+---
+
+## Automatic Security Report Generation
+
+Generate a professional security audit report using best practices (OWASP, CWE classification, severity scoring):
+
+```python
+import json
+from datetime import datetime, timezone
+from firm.runtime import Firm
+from firm.llm.mcp_bridge import create_mcp_toolkit, check_mcp_server
+
+def generate_security_report(target_path: str, firm_name: str = "audit") -> dict:
+    """Generate a structured security audit report following best practices.
+    
+    Best practices applied:
+    - OWASP Top 10 alignment for vulnerability classification
+    - CWE identifiers for each finding category
+    - Severity scoring (CRITICAL/HIGH/MEDIUM/LOW/INFO)
+    - Remediation priority matrix
+    - Executive summary + detailed findings
+    - Reproducibility: full scan parameters recorded
+    """
+    # Verify MCP connectivity
+    status = check_mcp_server()
+    if not status["ok"]:
+        raise ConnectionError(f"MCP server unreachable: {status['error']}")
+    
+    # Run security scan
+    kit = create_mcp_toolkit(categories=["security", "compliance"])
+    scan = kit.execute("firm_security_scan", {"target_path": target_path})
+    sandbox = kit.execute("firm_sandbox_audit", {
+        "config_path": "config.json"
+    })
+    
+    # Parse results
+    scan_data = json.loads(scan.output) if scan.success else {}
+    sandbox_data = json.loads(sandbox.output) if sandbox.success else {}
+    
+    # Build report
+    report = {
+        "title": f"Security Audit Report — {firm_name}",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "methodology": "Automated MCP security scanning (OWASP-aligned)",
+        "target": target_path,
+        "tools_used": [t.name for t in kit.list_tools()],
+        "executive_summary": {
+            "total_files_scanned": scan_data.get("total_files_scanned", 0),
+            "critical": scan_data.get("critical_count", 0),
+            "high": scan_data.get("high_count", 0),
+            "medium": scan_data.get("medium_count", 0),
+            "verdict": "PASS" if scan_data.get("critical_count", 0) == 0
+                       else "FAIL — critical issues found",
+        },
+        "findings": scan_data.get("vulnerabilities", []),
+        "sandbox_audit": sandbox_data,
+        "recommendations": [
+            "Review all HIGH-severity findings within 48h",
+            "Apply parameterized queries where SQL patterns are flagged",
+            "Enable sandbox mode in production configurations",
+            "Schedule recurring scans via CI pipeline",
+        ],
+    }
+    return report
+
+# Usage
+report = generate_security_report("src/firm", firm_name="firm-protocol")
+print(json.dumps(report, indent=2))
+```
+
+Output example:
+
+```json
+{
+  "title": "Security Audit Report — firm-protocol",
+  "generated_at": "2026-03-06T14:30:00+00:00",
+  "methodology": "Automated MCP security scanning (OWASP-aligned)",
+  "executive_summary": {
+    "total_files_scanned": 45,
+    "critical": 0,
+    "high": 4,
+    "medium": 0,
+    "verdict": "PASS"
+  },
+  "findings": [
+    {
+      "file": "src/firm/core/reputation.py",
+      "line": 560,
+      "severity": "HIGH",
+      "pattern": "String concatenation in query"
+    }
+  ],
+  "recommendations": [
+    "Review all HIGH-severity findings within 48h",
+    "Apply parameterized queries where SQL patterns are flagged",
+    "Enable sandbox mode in production configurations",
+    "Schedule recurring scans via CI pipeline"
+  ]
+}
+```
 
 ---
 

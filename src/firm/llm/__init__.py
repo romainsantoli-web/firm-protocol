@@ -34,6 +34,13 @@ from firm.llm.tools import (
     ToolResult,
     create_builtin_toolkit,
 )
+from firm.llm.mcp_bridge import (
+    check_mcp_server,
+    create_mcp_toolkit,
+    extend_agent_with_mcp,
+    get_mcp_categories,
+    MCP_CATEGORIES,
+)
 
 __all__ = [
     # Providers
@@ -53,6 +60,12 @@ __all__ = [
     "ToolKit",
     "BUILTIN_TOOLS",
     "create_builtin_toolkit",
+    # MCP Bridge
+    "create_mcp_toolkit",
+    "extend_agent_with_mcp",
+    "check_mcp_server",
+    "get_mcp_categories",
+    "MCP_CATEGORIES",
     # Executor
     "TaskExecutor",
     "ExecutionResult",
